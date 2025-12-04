@@ -22,12 +22,16 @@ const api = {
       ipcRenderer.invoke('items:getAll'),
     getByGroup: (groupId: string): Promise<IPCResponse<AnyItem[]>> => 
       ipcRenderer.invoke('items:getByGroup', groupId),
+    getRecent: (limit?: number): Promise<IPCResponse<AnyItem[]>> => 
+      ipcRenderer.invoke('items:getRecent', limit),
     create: (input: CreateItemInput): Promise<IPCResponse<AnyItem>> => 
       ipcRenderer.invoke('items:create', input),
     update: (input: UpdateItemInput): Promise<IPCResponse<AnyItem>> => 
       ipcRenderer.invoke('items:update', input),
     delete: (id: string): Promise<IPCResponse<void>> => 
       ipcRenderer.invoke('items:delete', id),
+    batchDelete: (ids: string[]): Promise<IPCResponse<void>> => 
+      ipcRenderer.invoke('items:batchDelete', ids),
     reorder: (items: { id: string; sortOrder: number }[]): Promise<IPCResponse<void>> => 
       ipcRenderer.invoke('items:reorder', items),
   },

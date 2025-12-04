@@ -1,7 +1,7 @@
 {
   "name": "launchpad",
   "version": "1.0.0",
-  "description": "A powerful launcher for bookmarks, SSH connections, and apps with network profile support (Tailscale, VPN, Local)",
+  "description": "A powerful launcher for bookmarks, SSH connections, apps, and passwords with network profile support. Features browser extensions, sync, encryption, and more.",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",

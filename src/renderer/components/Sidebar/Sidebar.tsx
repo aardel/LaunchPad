@@ -4,6 +4,9 @@ import {
   Trash2,
   Edit2,
   Play,
+  Clock,
+  X,
+  ChevronRight,
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import {
@@ -23,12 +26,14 @@ import {
 } from '@dnd-kit/sortable';
 import { useStore } from '../../store/useStore';
 import { SortableGroupItem } from './SortableGroupItem';
-import type { Group } from '@shared/types';
+import { formatRelativeTime } from '../../utils/relativeTime';
+import type { Group, AnyItem } from '@shared/types';
 
 export function Sidebar() {
   const {
     groups,
     items,
+    recentItems,
     selectedGroupId,
     setSelectedGroup,
     toggleGroupExpanded,
@@ -37,6 +42,8 @@ export function Sidebar() {
     launchGroup,
     reorderGroups,
     isSelectionMode,
+    launchItem,
+    loadRecentItems,
   } = useStore();
 
   const [contextMenu, setContextMenu] = useState<{
@@ -44,6 +51,7 @@ export function Sidebar() {
     y: number;
     group: Group;
   } | null>(null);
+  const [isRecentExpanded, setIsRecentExpanded] = useState(true);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -124,6 +132,60 @@ export function Sidebar() {
           <span className="flex-1 text-left">All Items</span>
           <span className="text-xs text-dark-500 tabular-nums">{items.length}</span>
         </button>
+
+        {/* Recent Items */}
+        {recentItems.length > 0 && (
+          <>
+            <div className="h-px bg-dark-800 my-2" />
+            <div className="mb-2">
+              <button
+                onClick={() => setIsRecentExpanded(!isRecentExpanded)}
+                className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-dark-800/50 transition-colors group/recent-header"
+              >
+                <div className="flex items-center gap-2">
+                  <ChevronRight
+                    className={`w-3.5 h-3.5 text-dark-500 transition-transform ${
+                      isRecentExpanded ? 'rotate-90' : ''
+                    }`}
+                  />
+                  <Clock className="w-4 h-4 text-dark-500" />
+                  <span className="text-xs font-semibold text-dark-400 uppercase tracking-wider">
+                    Recent
+                  </span>
+                </div>
+                <span className="text-xs text-dark-500 tabular-nums">{recentItems.length}</span>
+              </button>
+              {isRecentExpanded && (
+                <div className="space-y-0.5 max-h-64 overflow-y-auto mt-1">
+                  {recentItems.slice(0, 10).map((item) => {
+                    const group = groups.find(g => g.id === item.groupId);
+                    const relativeTime = formatRelativeTime(item.lastAccessedAt);
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => launchItem(item)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm
+                                 text-dark-400 hover:text-dark-200 hover:bg-dark-800
+                                 transition-colors text-left group/recent"
+                        title={`${item.name} - ${relativeTime}`}
+                      >
+                        <span className="text-xs text-dark-600 group-hover/recent:text-dark-500 flex-shrink-0 min-w-[50px] text-right">
+                          {relativeTime.split(' ')[0]}
+                        </span>
+                        <span className="flex-1 truncate min-w-0">{item.name}</span>
+                        {group && (
+                          <span className="text-xs text-dark-600 truncate max-w-[40px]" title={group.name}>
+                            {group.icon}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Divider */}
         <div className="h-px bg-dark-800 my-2" />

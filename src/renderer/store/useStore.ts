@@ -17,6 +17,7 @@ interface AppState {
   // Data
   items: AnyItem[];
   groups: Group[];
+  recentItems: AnyItem[];
   settings: AppSettings | null;
   tailscaleStatus: TailscaleStatus;
   browsers: Browser[];
@@ -65,6 +66,7 @@ interface AppState {
 
   // Data actions
   loadData: () => Promise<void>;
+  loadRecentItems: () => Promise<void>;
   refreshTailscaleStatus: () => Promise<void>;
 
   // Item actions
@@ -124,6 +126,7 @@ export const useStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
   groups: [],
+  recentItems: [],
   settings: null,
   tailscaleStatus: { connected: false },
   browsers: [],
@@ -194,8 +197,22 @@ export const useStore = create<AppState>((set, get) => ({
         selectedBrowser: settingsRes.data?.defaultBrowser || 'default',
         isLoading: false,
       });
+      
+      // Load recent items after main data is loaded
+      await get().loadRecentItems();
     } catch (error) {
       set({ error: String(error), isLoading: false });
+    }
+  },
+
+  loadRecentItems: async () => {
+    try {
+      const res = await window.api.items.getRecent(30);
+      if (res.success && res.data) {
+        set({ recentItems: res.data });
+      }
+    } catch (error) {
+      console.error('Failed to load recent items:', error);
     }
   },
 
@@ -293,6 +310,8 @@ export const useStore = create<AppState>((set, get) => ({
             await window.api.items.getAll().then((res) => {
               if (res.success) {
                 set({ items: res.data || [] });
+                // Refresh recent items after launching
+                get().loadRecentItems();
               }
             });
             return;
@@ -317,6 +336,8 @@ export const useStore = create<AppState>((set, get) => ({
       const res = await window.api.items.getAll();
       if (res.success) {
         set({ items: res.data || [] });
+        // Refresh recent items after launching
+        await get().loadRecentItems();
       }
     } catch (error) {
       set({ error: String(error) });
@@ -434,26 +455,23 @@ export const useStore = create<AppState>((set, get) => ({
     if (forceRefresh) {
       urlsToFetch = allBookmarkUrls;
     } else {
-      // Check which URLs need fetching (missing or expired)
+      // Optimize: Get expired favicons first (batch operation)
+      const expiredRes = await window.api.favicon.getExpired(allBookmarkUrls);
+      const expiredUrls = expiredRes.success && expiredRes.data ? expiredRes.data : [];
+      
+      // Find missing URLs (not in memory cache and not in expired list)
       const missingUrls: string[] = [];
-      const checkPromises = allBookmarkUrls.map(async (url) => {
-        if (favicons[url] === undefined) {
-          // Not in memory cache, check if it exists on disk
+      for (const url of allBookmarkUrls) {
+        if (favicons[url] === undefined && !expiredUrls.includes(url)) {
+          // Not in memory cache and not expired, check if it exists on disk
           const hasFaviconRes = await window.api.favicon.hasFavicon(url);
           if (!hasFaviconRes.success || !hasFaviconRes.data) {
             missingUrls.push(url);
           }
         }
-      });
-      await Promise.all(checkPromises);
-      
-      // Get expired favicons
-      const expiredRes = await window.api.favicon.getExpired(allBookmarkUrls);
-      if (expiredRes.success && expiredRes.data) {
-        urlsToFetch = [...missingUrls, ...expiredRes.data];
-      } else {
-        urlsToFetch = missingUrls;
       }
+      
+      urlsToFetch = [...new Set([...missingUrls, ...expiredUrls])]; // Remove duplicates
     }
 
     if (urlsToFetch.length === 0) return;
@@ -671,12 +689,26 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   batchDeleteItems: async (itemIds: string[]) => {
-    for (const id of itemIds) {
-      await get().deleteItem(id);
+    if (itemIds.length === 0) return;
+    
+    try {
+      // Use batch delete for better performance
+      const res = await window.api.items.batchDelete(itemIds);
+      if (res.success) {
+        // Update state by removing deleted items
+        set((state) => {
+          const newItems = state.items.filter(item => !itemIds.includes(item.id));
+          return { items: newItems };
+        });
+        get().clearSelection();
+        // Reload data to ensure UI is in sync
+        await get().loadData();
+      } else {
+        console.error('Batch delete failed:', res.error);
+      }
+    } catch (error) {
+      console.error('Error in batch delete:', error);
     }
-    get().clearSelection();
-    // Reload data to ensure UI is in sync
-    await get().loadData();
   },
 
   batchChangeGroup: async (itemIds: string[], groupId: string) => {

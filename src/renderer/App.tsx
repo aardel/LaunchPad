@@ -11,7 +11,7 @@ import { UnlockModal } from './components/Modals/UnlockModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
-  const { loadData, isLoading, error, refreshTailscaleStatus, fetchFavicons, refreshExpiredFavicons, items, setSyncStatus, settings, isVaultSetup, isVaultLocked } = useStore();
+  const { loadData, isLoading, error, refreshTailscaleStatus, fetchFavicons, refreshExpiredFavicons, items, setSyncStatus, settings, isVaultSetup, isVaultLocked, loadData: reloadData } = useStore();
 
   useEffect(() => {
     loadData();
@@ -49,12 +49,35 @@ function App() {
     }
   }, [setSyncStatus]);
 
-  // Fetch missing favicons when items first load
+  // Listen for bookmarks added via browser extension
+  useEffect(() => {
+    const handleExtensionBookmark = (_event: any, item: any) => {
+      console.log('Bookmark added via extension:', item);
+      // Reload data to include the new bookmark
+      reloadData();
+      // Show a simple notification (you can enhance this with a toast component later)
+      // For now, just reload the data
+    };
+
+    // @ts-ignore - window.electron is available in Electron context
+    if (window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.on('extension:bookmark-added', handleExtensionBookmark);
+      return () => {
+        window.electron.ipcRenderer.removeListener('extension:bookmark-added', handleExtensionBookmark);
+      };
+    }
+  }, [reloadData]);
+
+  // Fetch missing favicons when items first load (deferred to not block UI)
   useEffect(() => {
     if (items.length > 0) {
-      fetchFavicons(false); // Only fetch missing icons
+      // Defer favicon fetching slightly to let UI render first
+      const timeout = setTimeout(() => {
+        fetchFavicons(false); // Only fetch missing icons
+      }, 500); // 500ms delay to prioritize UI rendering
+      return () => clearTimeout(timeout);
     }
-  }, [items.length]); // Only run when items count changes, not on every render
+  }, [items.length, fetchFavicons]); // Only run when items count changes, not on every render
 
   // Periodically refresh expired favicons in background (every hour)
   useEffect(() => {

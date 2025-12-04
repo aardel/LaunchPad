@@ -10,6 +10,7 @@ import { BrowserBookmarksService, BrowserWithBookmarks, BrowserBookmark } from '
 import { FaviconService } from './services/favicon';
 import { HealthCheckService, HealthCheckResult } from './services/healthCheck';
 import { SyncService } from './services/sync';
+import { ExtensionServer } from './services/extensionServer';
 import {
   AnyItem,
   Group,
@@ -33,6 +34,7 @@ let browserBookmarks: BrowserBookmarksService;
 let faviconService: FaviconService;
 let healthCheckService: HealthCheckService;
 let syncService: SyncService;
+let extensionServer: ExtensionServer;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -100,6 +102,18 @@ async function initializeServices() {
   faviconService = new FaviconService();
   healthCheckService = new HealthCheckService();
   syncService = new SyncService(encryption);
+  extensionServer = new ExtensionServer(db);
+  
+  // Set callback for when bookmarks are added via extension
+  extensionServer.setOnBookmarkAdded((item) => {
+    // Notify renderer process
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('extension:bookmark-added', item);
+    }
+  });
+  
+  // Start extension server
+  extensionServer.start();
   
   // Pre-cache browser list
   await browserService.getInstalledBrowsers();
@@ -119,6 +133,15 @@ function setupIPC() {
   ipcMain.handle('items:getByGroup', async (_, groupId: string): Promise<IPCResponse<AnyItem[]>> => {
     try {
       const items = getDb().getItemsByGroup(groupId);
+      return { success: true, data: items };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('items:getRecent', async (_, limit: number = 30): Promise<IPCResponse<AnyItem[]>> => {
+    try {
+      const items = getDb().getRecentItems(limit);
       return { success: true, data: items };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -148,6 +171,16 @@ function setupIPC() {
   ipcMain.handle('items:delete', async (_, id: string): Promise<IPCResponse<void>> => {
     try {
       getDb().deleteItem(id);
+      triggerSync();
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('items:batchDelete', async (_, ids: string[]): Promise<IPCResponse<void>> => {
+    try {
+      getDb().batchDeleteItems(ids);
       triggerSync();
       return { success: true };
     } catch (error) {
@@ -965,5 +998,8 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (db) {
     db.close();
+  }
+  if (extensionServer) {
+    extensionServer.stop();
   }
 });

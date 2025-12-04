@@ -89,46 +89,120 @@ export class BrowserBookmarksService {
       const fullPath = this.expandPath(config.path);
       let hasBookmarks = false;
       let bookmarkCount = 0;
+      let fileExists = false;
 
       try {
         if (config.type === 'sqlite') {
           // Firefox - check if profiles directory exists with places.sqlite
           if (existsSync(fullPath)) {
+            fileExists = true;
             const profiles = readdirSync(fullPath);
             for (const profile of profiles) {
               const placesPath = join(fullPath, profile, 'places.sqlite');
               if (existsSync(placesPath)) {
                 hasBookmarks = true;
-                // Don't count for Firefox as it requires SQLite query
+                // Try to count bookmarks for Firefox
+                try {
+                  const tempPath = `/tmp/firefox_places_check_${Date.now()}.sqlite`;
+                  execSync(`cp "${placesPath}" "${tempPath}"`);
+                  const result = execSync(
+                    `sqlite3 "${tempPath}" "SELECT COUNT(*) FROM moz_bookmarks b JOIN moz_places p ON b.fk = p.id WHERE b.type = 1 AND p.url NOT LIKE 'place:%'"`,
+                    { encoding: 'utf-8' }
+                  );
+                  bookmarkCount = parseInt(result.trim()) || 0;
+                  execSync(`rm "${tempPath}"`);
+                } catch {
+                  // Couldn't count, but file exists
+                }
                 break;
               }
             }
           }
         } else if (config.type === 'plist') {
           // Safari
-          hasBookmarks = existsSync(fullPath);
+          fileExists = existsSync(fullPath);
+          if (fileExists) {
+            // Try to count bookmarks using defaults read
+            try {
+              const output = execSync(
+                `defaults read "${fullPath}"`,
+                { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 }
+              );
+              // Count HTTP/HTTPS URLs in the output
+              const urlMatches = output.match(/URLString\s*=\s*"(https?:\/\/[^"]+)"/g);
+              if (urlMatches) {
+                bookmarkCount = urlMatches.length;
+                hasBookmarks = bookmarkCount > 0;
+              } else {
+                // File exists but no URLs found (might be empty or only file:// URLs)
+                hasBookmarks = false;
+              }
+            } catch (error) {
+              // File exists but couldn't read it - still show it
+              console.error(`Error reading Safari bookmarks for counting:`, error);
+              hasBookmarks = true; // Show browser even if we can't count
+            }
+          }
         } else {
           // JSON (Chromium-based)
-          if (existsSync(fullPath)) {
-            const content = readFileSync(fullPath, 'utf-8');
-            const data = JSON.parse(content);
-            const bookmarks = this.extractChromiumBookmarks(data);
-            hasBookmarks = bookmarks.length > 0;
-            bookmarkCount = bookmarks.length;
+          // First check the default path
+          fileExists = existsSync(fullPath);
+          if (fileExists) {
+            try {
+              const content = readFileSync(fullPath, 'utf-8');
+              const data = JSON.parse(content);
+              const bookmarks = this.extractChromiumBookmarks(data);
+              hasBookmarks = bookmarks.length > 0;
+              bookmarkCount = bookmarks.length;
+            } catch (error) {
+              // File exists but couldn't parse it
+              console.error(`Error reading bookmarks for ${id}:`, error);
+              hasBookmarks = false;
+            }
+          } else {
+            // Check for alternative profiles (Profile 1, Profile 2, etc.)
+            const baseDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+            if (existsSync(baseDir)) {
+              try {
+                const profiles = readdirSync(baseDir);
+                for (const profile of profiles) {
+                  // Check if it's a profile directory (Profile 1, Profile 2, etc. or custom names)
+                  const profileBookmarksPath = join(baseDir, profile, 'Bookmarks');
+                  if (existsSync(profileBookmarksPath)) {
+                    fileExists = true;
+                    try {
+                      const content = readFileSync(profileBookmarksPath, 'utf-8');
+                      const data = JSON.parse(content);
+                      const bookmarks = this.extractChromiumBookmarks(data);
+                      if (bookmarks.length > 0) {
+                        hasBookmarks = true;
+                        bookmarkCount += bookmarks.length;
+                      }
+                    } catch {
+                      // Couldn't read this profile, try next
+                    }
+                  }
+                }
+              } catch {
+                // Couldn't read directory
+              }
+            }
           }
         }
       } catch (error) {
-        // Browser data not accessible
-        continue;
+        // Log error but still show browser if file exists
+        console.error(`Error checking bookmarks for ${id}:`, error);
       }
 
-      if (hasBookmarks) {
+      // Show browser if bookmark file exists (even if empty)
+      // This allows users to see all available browsers
+      if (fileExists) {
         browsers.push({
           id,
           name: info.name,
           icon: info.icon,
           hasBookmarks,
-          bookmarkCount: bookmarkCount || undefined,
+          bookmarkCount: bookmarkCount > 0 ? bookmarkCount : undefined,
         });
       }
     }
@@ -255,14 +329,58 @@ export class BrowserBookmarksService {
     const bookmarks: BrowserBookmark[] = [];
 
     try {
-      // Convert plist to JSON using plutil
-      const result = execSync(
-        `plutil -convert json -o - "${plistPath}"`,
-        { encoding: 'utf-8' }
-      );
+      // Safari plist contains binary data that prevents JSON conversion
+      // Use defaults read which can handle binary plists
+      let output: string;
+      try {
+        output = execSync(
+          `defaults read "${plistPath}"`,
+          { encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 } // 10MB buffer for large bookmark files
+        );
+      } catch (error) {
+        console.error('Error reading Safari bookmarks with defaults:', error);
+        return [];
+      }
 
-      const data = JSON.parse(result);
-      this.extractSafariBookmarks(data, bookmarks);
+      // Parse the defaults output (property list format)
+      // Extract bookmarks by finding URLString entries and their corresponding titles
+      // The structure has title inside URIDictionary, then URLString on a separate line
+      
+      // Split output into lines for easier processing
+      const lines = output.split('\n');
+      
+      // Find all URLString entries with their positions
+      const urlEntries: Array<{ url: string; lineIndex: number }> = [];
+      lines.forEach((line, index) => {
+        const urlMatch = line.match(/URLString\s*=\s*"([^"]+)"/);
+        if (urlMatch && urlMatch[1]) {
+          const url = urlMatch[1];
+          // Only include HTTP/HTTPS URLs
+          if (url.startsWith('http://') || url.startsWith('https://')) {
+            urlEntries.push({ url, lineIndex: index });
+          }
+        }
+      });
+      
+      // For each URL, find the corresponding title
+      // Title is usually in URIDictionary a few lines before URLString
+      urlEntries.forEach(({ url, lineIndex }) => {
+        let title = 'Untitled';
+        
+        // Look backwards from URLString to find the title
+        // Title is typically 2-10 lines before URLString
+        for (let i = lineIndex - 1; i >= Math.max(0, lineIndex - 15); i--) {
+          const line = lines[i];
+          // Match title = "..." pattern (can be inside URIDictionary or standalone)
+          const titleMatch = line.match(/title\s*=\s*"([^"]+)"/);
+          if (titleMatch && titleMatch[1]) {
+            title = titleMatch[1];
+            break;
+          }
+        }
+        
+        bookmarks.push({ name: title, url });
+      });
     } catch (error) {
       console.error('Error reading Safari bookmarks:', error);
     }
@@ -270,19 +388,51 @@ export class BrowserBookmarksService {
     return bookmarks;
   }
 
+  // Simple parser for defaults read output (property list format)
+  // This is a basic implementation - a proper plist parser would be better
+  private parseDefaultsOutput(output: string): any {
+    // This is a simplified parser - for production, consider using a proper plist library
+    // For now, we'll use a regex-based approach to extract the structure
+    try {
+      // Try to find the Children array
+      const childrenMatch = output.match(/Children\s*=\s*\(([\s\S]*)\);/);
+      if (!childrenMatch) return null;
+
+      // This is complex to parse properly, so we'll use the fallback method in readSafariBookmarks
+      return null; // Signal to use fallback
+    } catch {
+      return null;
+    }
+  }
+
   private extractSafariBookmarks(node: any, bookmarks: BrowserBookmark[], folder: string = ''): void {
     if (!node) return;
 
-    if (node.WebBookmarkType === 'WebBookmarkTypeLeaf' && node.URLString) {
-      bookmarks.push({
-        name: node.URIDictionary?.title || node.Title || 'Untitled',
-        url: node.URLString,
-        folder: folder || undefined,
-      });
-    } else if (node.WebBookmarkType === 'WebBookmarkTypeList' && node.Children) {
+    // Handle root level - Safari plist has a Children array at root
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        this.extractSafariBookmarks(child, bookmarks, folder);
+      }
+      return;
+    }
+
+    // Handle object with Children array (folder or root)
+    if (node.Children && Array.isArray(node.Children)) {
       const newFolder = node.Title ? (folder ? `${folder}/${node.Title}` : node.Title) : folder;
       for (const child of node.Children) {
         this.extractSafariBookmarks(child, bookmarks, newFolder);
+      }
+    }
+
+    // Handle bookmark leaf
+    if (node.WebBookmarkType === 'WebBookmarkTypeLeaf' && node.URLString) {
+      // Skip file:// URLs and javascript: URLs as they're not web bookmarks
+      if (node.URLString.startsWith('http://') || node.URLString.startsWith('https://')) {
+        bookmarks.push({
+          name: node.URIDictionary?.title || node.Title || 'Untitled',
+          url: node.URLString,
+          folder: folder || undefined,
+        });
       }
     }
   }

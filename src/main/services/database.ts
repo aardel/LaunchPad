@@ -324,6 +324,18 @@ export class DatabaseService {
     this.save();
   }
 
+  batchDeleteItems(ids: string[]): void {
+    if (ids.length === 0) return;
+    
+    // Delete all items in a loop (more efficient than individual saves)
+    for (const id of ids) {
+      this.db!.run('DELETE FROM items WHERE id = ?', [id]);
+    }
+    
+    // Only save once after all deletions (this is the key optimization)
+    this.save();
+  }
+
   reorderItems(items: { id: string; sortOrder: number }[]): void {
     for (const item of items) {
       this.db!.run('UPDATE items SET sort_order = ? WHERE id = ?', [item.sortOrder, item.id]);
@@ -345,6 +357,19 @@ export class DatabaseService {
       [now, id]
     );
     this.save();
+  }
+
+  getRecentItems(limit: number = 30): AnyItem[] {
+    const stmt = this.db!.prepare(
+      'SELECT * FROM items WHERE last_accessed_at IS NOT NULL ORDER BY last_accessed_at DESC LIMIT ?'
+    );
+    stmt.bind([limit]);
+    const items: AnyItem[] = [];
+    while (stmt.step()) {
+      items.push(this.rowToItem(stmt.getAsObject()));
+    }
+    stmt.free();
+    return items;
   }
 
   searchItems(query: string): AnyItem[] {
@@ -494,6 +519,16 @@ export class DatabaseService {
     });
   }
 
+  // Optimized JSON parse helper with error handling
+  private safeJsonParse<T>(json: string | null | undefined, defaultValue: T): T {
+    if (!json) return defaultValue;
+    try {
+      return JSON.parse(json) as T;
+    } catch {
+      return defaultValue;
+    }
+  }
+
   private rowToItem(row: Record<string, any>): AnyItem {
     const base = {
       id: row.id,
@@ -502,7 +537,7 @@ export class DatabaseService {
       icon: row.icon,
       color: row.color,
       groupId: row.group_id,
-      tags: JSON.parse(row.tags || '[]'),
+      tags: this.safeJsonParse(row.tags, []),
       sortOrder: row.sort_order,
       accessCount: row.access_count,
       createdAt: row.created_at,
@@ -518,8 +553,8 @@ export class DatabaseService {
           protocol: row.protocol,
           port: row.port,
           path: row.path,
-          networkAddresses: JSON.parse(row.network_addresses || '{}'),
-          credentials: row.credentials ? JSON.parse(row.credentials) : undefined,
+          networkAddresses: this.safeJsonParse(row.network_addresses, {}),
+          credentials: row.credentials ? this.safeJsonParse(row.credentials, undefined) : undefined,
         } as BookmarkItem;
 
       case 'ssh':
@@ -528,9 +563,9 @@ export class DatabaseService {
           type: 'ssh',
           username: row.username,
           port: row.port || 22,
-          networkAddresses: JSON.parse(row.network_addresses || '{}'),
+          networkAddresses: this.safeJsonParse(row.network_addresses, {}),
           sshKey: row.ssh_key,
-          credentials: row.credentials ? JSON.parse(row.credentials) : undefined,
+          credentials: row.credentials ? this.safeJsonParse(row.credentials, undefined) : undefined,
         } as SSHItem;
 
       case 'app':
@@ -538,7 +573,7 @@ export class DatabaseService {
           ...base,
           type: 'app',
           appPath: row.app_path,
-          arguments: row.app_arguments ? JSON.parse(row.app_arguments) : undefined,
+          arguments: row.app_arguments ? this.safeJsonParse(row.app_arguments, undefined) : undefined,
         } as AppItem;
 
       case 'password':
@@ -548,7 +583,7 @@ export class DatabaseService {
           service: row.service || row.name, // Fallback to name if service not set
           username: row.username,
           url: row.url,
-          credentials: row.credentials ? JSON.parse(row.credentials) : undefined,
+          credentials: row.credentials ? this.safeJsonParse(row.credentials, undefined) : undefined,
         } as PasswordItem;
 
       default:

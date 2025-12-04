@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { SortableItemCard } from './SortableItemCard';
 import { SortableListItem } from './SortableListItem';
+import { ListItem } from './ListItem';
 import type { Group, AnyItem, BookmarkItem, SSHItem, AppItem, PasswordItem } from '@shared/types';
 
 interface SortableGroupSectionProps {

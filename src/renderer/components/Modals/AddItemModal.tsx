@@ -216,7 +216,7 @@ export function AddItemModal() {
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-dark-900 border border-dark-700 rounded-2xl shadow-2xl animate-scale-in overflow-hidden">
+      <div className="relative w-full max-w-lg bg-dark-900 border border-dark-700 rounded-2xl shadow-2xl animate-scale-in overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-dark-800">
           <h2 className="text-xl font-semibold text-dark-100">
@@ -231,7 +231,7 @@ export function AddItemModal() {
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           {step === 'type' ? (
             <div className="space-y-3">
               <p className="text-dark-400 text-sm mb-4">What would you like to add?</p>
