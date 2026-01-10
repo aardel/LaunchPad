@@ -1,7 +1,7 @@
-// Background service worker for Launchpad extension
+// Background service worker for LaunchIt extension
 // Currently minimal - can be extended for future features
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Launchpad Quick Add extension installed');
+  console.log('LaunchIt Quick Add extension installed');
 });
 

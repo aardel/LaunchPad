@@ -21,18 +21,20 @@ export function useKeyboardShortcuts() {
     closeSettings,
     lockVault,
     isVaultSetup,
+    openCommandPalette,
+    isCommandPaletteOpen,
   } = useStore();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       const target = e.target as HTMLElement;
-      const isInput = target.tagName === 'INPUT' || 
-                      target.tagName === 'TEXTAREA' || 
-                      target.isContentEditable;
+      const isInput = target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable;
 
       // Check if any modal is open
-      const anyModalOpen = isAddModalOpen || isEditModalOpen || isGroupModalOpen || isSettingsOpen;
+      const anyModalOpen = isAddModalOpen || isEditModalOpen || isGroupModalOpen || isSettingsOpen || isCommandPaletteOpen;
 
       // Escape - close modals
       if (e.key === 'Escape') {
@@ -92,8 +94,15 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // Cmd/Ctrl + K or Cmd/Ctrl + F - Focus search
-      if (cmdOrCtrl && (e.key === 'k' || e.key === 'f')) {
+      // Cmd/Ctrl + K - Command Palette
+      if (cmdOrCtrl && e.key === 'k') {
+        e.preventDefault();
+        openCommandPalette();
+        return;
+      }
+
+      // Cmd/Ctrl + F - Focus search
+      if (cmdOrCtrl && e.key === 'f') {
         e.preventDefault();
         const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
         if (searchInput) {

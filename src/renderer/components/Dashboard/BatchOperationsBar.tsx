@@ -2,13 +2,14 @@ import { useState } from 'react';
 import {
   X,
   Trash2,
-  FolderOpen,
   CheckSquare,
   Square,
   FolderPlus,
   Plus,
+  Replace,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import { BulkEditModal } from '../Modals/BulkEditModal';
 
 export function BatchOperationsBar() {
   const {
@@ -26,6 +27,7 @@ export function BatchOperationsBar() {
   } = useStore();
 
   const [showGroupSelector, setShowGroupSelector] = useState(false);
+  const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
 
@@ -131,9 +133,9 @@ export function BatchOperationsBar() {
                     <Plus className="w-4 h-4" />
                     <span className="flex-1 font-medium">Create New Group</span>
                   </button>
-                  
+
                   <div className="h-px bg-dark-700 my-1" />
-                  
+
                   {/* Existing Groups */}
                   {groups.length === 0 ? (
                     <div className="px-4 py-2 text-sm text-dark-500 text-center">
@@ -156,6 +158,19 @@ export function BatchOperationsBar() {
               </>
             )}
           </div>
+
+          {/* Bulk Edit Addresses */}
+          <button
+            onClick={() => setShowBulkEdit(true)}
+            disabled={selectedCount === 0}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+                     bg-dark-800 hover:bg-dark-700 text-dark-200
+                     disabled:opacity-50 disabled:cursor-not-allowed
+                     transition-all duration-200"
+          >
+            <Replace className="w-4 h-4" />
+            Bulk Edit
+          </button>
 
           {/* Delete */}
           <button
@@ -185,7 +200,12 @@ export function BatchOperationsBar() {
           <X className="w-5 h-5" />
         </button>
       </div>
+
+      <BulkEditModal
+        isOpen={showBulkEdit}
+        onClose={() => setShowBulkEdit(false)}
+        selectedIds={Array.from(selectedItemIds)}
+      />
     </div>
   );
 }
-

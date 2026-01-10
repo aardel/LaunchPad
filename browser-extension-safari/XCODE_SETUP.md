@@ -9,7 +9,7 @@ Since Safari requires extensions to be built as Safari App Extensions, here's a 
 3. Select "macOS" → "App"
 4. Click "Next"
 5. Fill in:
-   - Product Name: `LaunchpadExtension`
+   - Product Name: `LaunchItExtension`
    - Team: Your Apple Developer account (or "None" for development)
    - Organization Identifier: `com.yourname` (or similar)
    - Language: Swift
@@ -23,8 +23,8 @@ Since Safari requires extensions to be built as Safari App Extensions, here's a 
 3. Select "Safari Web Extension"
 4. Click "Next"
 5. Fill in:
-   - Extension Name: `Launchpad Quick Add`
-   - Bundle Identifier: `com.yourname.LaunchpadExtension.LaunchpadQuickAdd`
+   - Extension Name: `LaunchIt Quick Add`
+   - Bundle Identifier: `com.yourname.LaunchItExtension.LaunchItQuickAdd`
 6. Click "Finish"
 
 Xcode will create a basic extension structure.
@@ -68,7 +68,7 @@ Xcode will create a basic extension structure.
 ## Step 6: Enable in Safari
 
 1. Go to Safari → Settings → Extensions
-2. Find "Launchpad Quick Add"
+2. Find "LaunchIt Quick Add"
 3. Toggle it ON
 4. Grant any required permissions
 

@@ -14,18 +14,38 @@ const execAsync = promisify(exec);
 
 export class LauncherService {
   private browserService: BrowserService;
+  private healthCheckService?: any; // Using any to avoid circular deps if they exist, but normally HealthCheckService
 
-  constructor(browserService: BrowserService) {
+  constructor(browserService: BrowserService, healthCheckService?: any) {
     this.browserService = browserService;
+    this.healthCheckService = healthCheckService;
   }
 
-  async launchItem(item: AnyItem, profile: NetworkProfile, browserId?: string, decryptedPassword?: string, terminal?: string): Promise<void> {
+  async launchItem(
+    item: AnyItem,
+    profile: NetworkProfile,
+    browserId?: string,
+    decryptedPassword?: string,
+    terminal?: string,
+    autoRoute: boolean = false
+  ): Promise<{ profileUsed: NetworkProfile; routed: boolean }> {
+    let finalProfile = profile;
+    let routed = false;
+
+    if (autoRoute && item.type === 'bookmark' && this.healthCheckService) {
+      const result = await this.healthCheckService.findFirstReachableAddress(item);
+      if (result && result.profile !== profile) {
+        finalProfile = result.profile;
+        routed = true;
+      }
+    }
+
     switch (item.type) {
       case 'bookmark':
-        await this.launchBookmark(item, profile, browserId);
+        await this.launchBookmark(item, finalProfile, browserId);
         break;
       case 'ssh':
-        await this.launchSSH(item, profile, decryptedPassword, terminal);
+        await this.launchSSH(item, finalProfile, decryptedPassword, terminal);
         break;
       case 'app':
         await this.launchApp(item);
@@ -33,11 +53,13 @@ export class LauncherService {
       default:
         throw new Error(`Unknown item type: ${(item as any).type}`);
     }
+
+    return { profileUsed: finalProfile, routed };
   }
 
   private async launchBookmark(item: BookmarkItem, profile: NetworkProfile, browserId?: string): Promise<void> {
     const url = this.buildUrl(item, profile);
-    
+
     // If no specific browser or default, use system default
     if (!browserId || browserId === 'default') {
       await shell.openExternal(url);
@@ -74,13 +96,13 @@ export class LauncherService {
 
     const port = item.port || 22;
     const username = item.username || 'root';
-    
+
     const platform = process.platform;
 
     if (platform === 'darwin') {
       const isITerm = terminal.toLowerCase().includes('iterm');
       const terminalApp = isITerm ? 'iTerm' : 'Terminal';
-      
+
       let sshCommand = '';
       let tempScript = '';
       let hasCleanup = false;
@@ -88,7 +110,7 @@ export class LauncherService {
       if (password) {
         // Use sshpass if available, otherwise use expect script
         const hasSshpass = await this.checkCommand('sshpass');
-        
+
         if (hasSshpass) {
           // Use sshpass for password authentication
           sshCommand = `sshpass -p '${this.escapeShellArg(password)}' ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}`;
@@ -116,7 +138,7 @@ export class LauncherService {
               }
             }
           `;
-          
+
           // Write expect script to temp file and execute
           tempScript = `/tmp/launchpad_ssh_${Date.now()}.exp`;
           const { writeFileSync } = require('fs');
@@ -177,10 +199,10 @@ export class LauncherService {
       }
     } else {
       // Linux - try common terminal emulators
-      const sshCommand = password 
+      const sshCommand = password
         ? `sshpass -p '${this.escapeShellArg(password)}' ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}`
         : `ssh ${username}@${host} -p ${port}`;
-      
+
       const terminals = [
         ['gnome-terminal', '--', 'bash', '-c', `${sshCommand}; exec bash`],
         ['konsole', '-e', sshCommand],
@@ -254,7 +276,7 @@ export class LauncherService {
     const path = item.path || '';
 
     let url = `${protocol}://`;
-    
+
     // Handle IPv6 addresses
     if (host.includes(':') && !host.startsWith('[')) {
       url += `[${host}]`;
@@ -264,12 +286,12 @@ export class LauncherService {
 
     // Add port if specified and not default
     if (port) {
-      const isDefaultPort = 
+      const isDefaultPort =
         (protocol === 'http' && port === 80) ||
         (protocol === 'https' && port === 443) ||
         (protocol === 'ftp' && port === 21) ||
         (protocol === 'ssh' && port === 22);
-      
+
       if (!isDefaultPort) {
         url += `:${port}`;
       }

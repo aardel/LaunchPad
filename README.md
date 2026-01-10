@@ -22,6 +22,7 @@ Switch between different network contexts seamlessly:
 ### 🔒 Security & Encryption
 - **Encrypted Credentials** - All passwords and sensitive data encrypted at rest
 - **Vault System** - Master password protection for encrypted data
+- **Vault Reset** - Securely reset your vault if you forget your password (clears encrypted data, keeps bookmarks)
 - **Secure Storage** - Credentials never stored in plain text
 
 ### 🎯 Smart Features
@@ -194,7 +195,7 @@ LaunchIt includes AI-powered features using Groq's free API (14,400 requests/day
    - Automatically detects similar items as you type
    - Shows warning with similar items found
 
-See `AI_USAGE_GUIDE.md` for detailed instructions.
+See `AI.md` for detailed instructions.
 
 ### Automatic Backup & Undo
 
@@ -298,12 +299,14 @@ browser-extension-safari/ # Safari extension
 
 - [x] Browser extension for quick-add
 - [x] Recent items view
+- [x] Recent Quick Search (Global Launcher)
 - [x] Browser bookmark import
 - [x] Health checker
 - [x] Drag-and-drop reordering
 - [x] WebDAV/Nextcloud sync
 - [x] Password manager
 - [x] Favicon support
+- [x] Bulk edit (Find & Replace)
 - [ ] Command palette (Cmd+K)
 - [ ] Favorites/starred items
 - [ ] Full tags UI

@@ -7,7 +7,10 @@ import {
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { ImportBrowserModal } from './ImportBrowserModal';
+import { KeyboardShortcutRecorder } from '../KeyboardShortcutRecorder';
+import { ImportConflictModal, type GroupConflict } from './ImportConflictModal';
 import type { NetworkProfile } from '@shared/types';
+import type { ExportData } from '../../../main/services/importExport';
 
 type SettingsTab = 'general' | 'security' | 'network' | 'terminal' | 'shortcuts' | 'data' | 'ai' | 'about';
 
@@ -42,6 +45,28 @@ export function SettingsModal() {
 
   // Helper to update settings and refresh store
   const updateSettings = async (updates: Partial<typeof settings>) => {
+    // Ensure keyboardShortcuts are fully defined if being updated
+    if (updates.keyboardShortcuts) {
+      const currentShortcuts = (settings?.keyboardShortcuts || {}) as any;
+      updates.keyboardShortcuts = {
+        newItem: updates.keyboardShortcuts.newItem ?? currentShortcuts.newItem ?? 'Meta+N',
+        newGroup: updates.keyboardShortcuts.newGroup ?? currentShortcuts.newGroup ?? 'Meta+G',
+        openSettings: updates.keyboardShortcuts.openSettings ?? currentShortcuts.openSettings ?? 'Meta+,',
+        focusSearch: updates.keyboardShortcuts.focusSearch ?? currentShortcuts.focusSearch ?? 'Meta+F',
+        lockVault: updates.keyboardShortcuts.lockVault ?? currentShortcuts.lockVault ?? 'Meta+L',
+        commandPalette: updates.keyboardShortcuts.commandPalette ?? currentShortcuts.commandPalette ?? 'Meta+K',
+        selectGroup1: updates.keyboardShortcuts.selectGroup1 ?? currentShortcuts.selectGroup1 ?? '1',
+        selectGroup2: updates.keyboardShortcuts.selectGroup2 ?? currentShortcuts.selectGroup2 ?? '2',
+        selectGroup3: updates.keyboardShortcuts.selectGroup3 ?? currentShortcuts.selectGroup3 ?? '3',
+        selectGroup4: updates.keyboardShortcuts.selectGroup4 ?? currentShortcuts.selectGroup4 ?? '4',
+        selectGroup5: updates.keyboardShortcuts.selectGroup5 ?? currentShortcuts.selectGroup5 ?? '5',
+        selectGroup6: updates.keyboardShortcuts.selectGroup6 ?? currentShortcuts.selectGroup6 ?? '6',
+        selectGroup7: updates.keyboardShortcuts.selectGroup7 ?? currentShortcuts.selectGroup7 ?? '7',
+        selectGroup8: updates.keyboardShortcuts.selectGroup8 ?? currentShortcuts.selectGroup8 ?? '8',
+        selectGroup9: updates.keyboardShortcuts.selectGroup9 ?? currentShortcuts.selectGroup9 ?? '9',
+        showAllGroups: updates.keyboardShortcuts.showAllGroups ?? currentShortcuts.showAllGroups ?? '0',
+      };
+    }
     const res = await window.api.settings.update(updates);
     if (res.success && res.data) {
       useStore.setState({ settings: res.data });
@@ -56,6 +81,16 @@ export function SettingsModal() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [selectedImportGroup, setSelectedImportGroup] = useState<string>('');
   const [isBrowserImportOpen, setIsBrowserImportOpen] = useState(false);
+  const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
+  const [importConflicts, setImportConflicts] = useState<GroupConflict[]>([]);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [deleteAllPassword, setDeleteAllPassword] = useState('');
+  const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
+  const [pendingImportData, setPendingImportData] = useState<{
+    importData: ExportData;
+    safeGroups: any[];
+    safeItems: any[];
+  } | null>(null);
 
   // Sync state
   const [syncEnabled, setSyncEnabled] = useState(false);
@@ -184,9 +219,56 @@ export function SettingsModal() {
   };
 
   const handleImport = async () => {
-    setImportStatus('Importing...');
+    setImportStatus('Analyzing import...');
     try {
-      const result = await window.api.data.import();
+      const result = await window.api.data.analyzeImport();
+      if (result.success && result.data) {
+        if (result.data.conflicts.length > 0) {
+          // Show conflict modal
+          setImportConflicts(result.data.conflicts);
+          setPendingImportData({
+            importData: result.data.importData,
+            safeGroups: result.data.safeGroups,
+            safeItems: result.data.safeItems,
+          });
+          setIsConflictModalOpen(true);
+          setImportStatus(null);
+        } else {
+          // No conflicts, import directly
+          const importResult = await window.api.data.importWithResolutions(
+            result.data.importData,
+            result.data.safeGroups,
+            result.data.safeItems,
+            {}
+          );
+          if (importResult.success && importResult.data) {
+            setImportStatus(`Imported ${importResult.data.groupsCount} groups and ${importResult.data.itemsCount} items`);
+            await loadData();
+            setTimeout(() => setImportStatus(null), 3000);
+          } else {
+            setImportStatus(importResult.error || 'Import failed');
+          }
+        }
+      } else {
+        setImportStatus(result.error || 'Import failed');
+      }
+    } catch (error) {
+      setImportStatus('Import failed');
+    }
+  };
+
+  const handleConflictResolution = async (resolutions: Map<string, 'merge' | 'replace' | 'skip'>) => {
+    if (!pendingImportData) return;
+
+    setImportStatus('Importing with resolutions...');
+    try {
+      const resolutionsObj = Object.fromEntries(resolutions);
+      const result = await window.api.data.importWithResolutions(
+        pendingImportData.importData,
+        pendingImportData.safeGroups,
+        pendingImportData.safeItems,
+        resolutionsObj
+      );
       if (result.success && result.data) {
         setImportStatus(`Imported ${result.data.groupsCount} groups and ${result.data.itemsCount} items`);
         await loadData();
@@ -196,6 +278,49 @@ export function SettingsModal() {
       }
     } catch (error) {
       setImportStatus('Import failed');
+    } finally {
+      setPendingImportData(null);
+      setImportConflicts([]);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    if (!isVaultSetup) {
+      setDeleteAllError('Vault must be set up to delete all data');
+      return;
+    }
+
+    setDeleteAllError(null);
+
+    // Verify password
+    const unlockResult = await window.api.encryption.unlock(deleteAllPassword);
+    if (!unlockResult.success) {
+      setDeleteAllError('Incorrect password');
+      return;
+    }
+
+    // Delete all groups and items
+    try {
+      const allGroups = await window.api.groups.getAll();
+      const allItems = await window.api.items.getAll();
+
+      if (allItems.success && allItems.data) {
+        for (const item of allItems.data) {
+          await window.api.items.delete(item.id);
+        }
+      }
+
+      if (allGroups.success && allGroups.data) {
+        for (const group of allGroups.data) {
+          await window.api.groups.delete(group.id);
+        }
+      }
+
+      await loadData();
+      setIsDeleteAllModalOpen(false);
+      setDeleteAllPassword('');
+    } catch (error) {
+      setDeleteAllError('Failed to delete all data');
     }
   };
 
@@ -487,7 +612,11 @@ export function SettingsModal() {
                   <label className="input-label">Default Terminal App</label>
                   <select
                     value={defaultTerminal}
-                    onChange={(e) => setDefaultTerminal(e.target.value)}
+                    onChange={(e) => {
+                      const newTerminal = e.target.value;
+                      setDefaultTerminal(newTerminal);
+                      updateSettings({ defaultTerminal: newTerminal });
+                    }}
                     className="input-base"
                   >
                     <option value="Terminal">Terminal.app</option>
@@ -508,58 +637,85 @@ export function SettingsModal() {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium text-dark-100 mb-4">Keyboard Shortcuts</h3>
+                  <p className="text-sm text-dark-400 mb-6">
+                    Click "Record" and press the keys you want. Warnings show for system conflicts.
+                  </p>
+
                   <div className="space-y-2">
-                    {SHORTCUTS.map((shortcut, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between py-2 px-3 bg-dark-800/50 rounded-lg"
-                      >
-                        <span className="text-sm text-dark-300">{shortcut.description}</span>
-                        <div className="flex items-center gap-1">
-                          {shortcut.keys.map((key, keyIdx) => (
-                            <span key={keyIdx} className="flex items-center gap-1">
-                              {keyIdx > 0 && <span className="text-dark-500 text-xs">+</span>}
-                              <kbd className="px-2 py-1 text-xs font-mono bg-dark-700 border border-dark-600 rounded text-dark-200">
-                                {key}
-                              </kbd>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                    <KeyboardShortcutRecorder
+                      label="New item"
+                      value={settings?.keyboardShortcuts?.newItem || 'Meta+N'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), newItem: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="New group"
+                      value={settings?.keyboardShortcuts?.newGroup || 'Meta+G'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), newGroup: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="Command Palette"
+                      value={settings?.keyboardShortcuts?.commandPalette || 'Meta+K'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), commandPalette: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="Focus search"
+                      value={settings?.keyboardShortcuts?.focusSearch || 'Meta+F'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), focusSearch: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="Open settings"
+                      value={settings?.keyboardShortcuts?.openSettings || 'Meta+,'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), openSettings: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="Lock vault"
+                      value={settings?.keyboardShortcuts?.lockVault || 'Meta+L'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), lockVault: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="Select group 1"
+                      value={settings?.keyboardShortcuts?.selectGroup1 || '1'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), selectGroup1: value }
+                      })}
+                    />
+                    <KeyboardShortcutRecorder
+                      label="Show all groups"
+                      value={settings?.keyboardShortcuts?.showAllGroups || '0'}
+                      onChange={(value) => updateSettings({
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), showAllGroups: value }
+                      })}
+                    />
                   </div>
                 </div>
 
                 <div>
                   <h3 className="text-lg font-medium text-dark-100 mb-4">Global Launcher</h3>
-                  <div className="p-4 bg-dark-800/50 rounded-xl space-y-4">
-                    <div>
-                      <label className="input-label text-xs">Global Shortcut</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={globalSearchHotkey}
-                          onChange={(e) => setGlobalSearchHotkey(e.target.value)}
-                          placeholder="e.g. Option+Space"
-                          className="input-base text-sm"
-                        />
-                        <button
-                          onClick={() => updateSettings({ globalSearchHotkey })}
-                          className="btn-primary whitespace-nowrap"
-                        >
-                          Update Hotkey
-                        </button>
-                      </div>
-                      <p className="text-xs text-dark-500 mt-2">
-                        Used to open the search bar from anywhere. Use Electron accelerator format (e.g. <code>CmdOrCtrl+Shift+Space</code>).
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-sm text-dark-400 mb-4">
+                    System-wide shortcut to open Quick Search from anywhere, even when the app is not focused.
+                  </p>
+                  <KeyboardShortcutRecorder
+                    label="Global Quick Search"
+                    value={settings?.globalSearchHotkey || (navigator.platform.includes('Mac') ? 'Option+Space' : 'Alt+Space')}
+                    onChange={(value) => updateSettings({ globalSearchHotkey: value })}
+                  />
                 </div>
 
-                <div className="p-4 bg-dark-800/30 rounded-lg">
-                  <p className="text-xs text-dark-500 text-center">
-                    💡 Tip: Press number keys 1-9 to quickly switch between groups
+                <div className="p-4 bg-accent-primary/10 rounded-lg border border-accent-primary/30">
+                  <p className="text-xs text-dark-300 flex items-center gap-2">
+                    💡 <span>Press Escape while recording to cancel. System shortcuts show warnings.</span>
                   </p>
                 </div>
               </div>
@@ -882,34 +1038,57 @@ export function SettingsModal() {
                     Import directly from Chrome, Firefox, Safari, Brave, Arc, and more
                   </p>
 
-                  <div className="relative my-4">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-dark-700" />
-                    </div>
-                    <div className="relative flex justify-center text-xs">
-                      <span className="px-2 bg-dark-900 text-dark-500">or import from file</span>
-                    </div>
-                  </div>
+                  <button onClick={handleImport} className="btn-secondary">
+                    📥 Import Backup
+                  </button>
+                  {importStatus && (
+                    <p className="text-sm text-dark-300 mt-2">{importStatus}</p>
+                  )}
+                </div>
 
-                  <div className="space-y-2">
-                    <select
-                      value={selectedImportGroup}
-                      onChange={(e) => setSelectedImportGroup(e.target.value)}
-                      className="input-base text-sm"
-                    >
-                      {groups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.icon} {group.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={handleImportBrowserBookmarks}
-                      className="btn-secondary w-full"
-                    >
-                      <FileUp className="w-4 h-4" />
-                      Import from HTML file
-                    </button>
+                <div className="p-4 bg-dark-800/50 rounded-xl">
+                  <label className="input-label">Browser Import Groups</label>
+                  <p className="text-sm text-dark-400 mb-3">
+                    Select a group to import browser bookmarks into.
+                  </p>
+                  <select
+                    value={selectedImportGroup}
+                    onChange={(e) => setSelectedImportGroup(e.target.value)}
+                    className="input-base mb-3"
+                  >
+                    <option value="">Select a group...</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.icon} {group.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={handleImportBrowserBookmarks}
+                    disabled={!selectedImportGroup}
+                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    📚 Import from Browser
+                  </button>
+                </div>
+
+                {/* Delete All Data */}
+                <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="font-medium text-red-400 mb-2">Danger Zone</h4>
+                      <p className="text-sm text-dark-300 mb-3">
+                        Permanently delete all groups, items, and data. This action cannot be undone.
+                      </p>
+                      <button
+                        onClick={() => setIsDeleteAllModalOpen(true)}
+                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+                      >
+                        🗑️ Delete All Data
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1083,8 +1262,8 @@ export function SettingsModal() {
                   <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-accent-primary to-accent-secondary rounded-2xl flex items-center justify-center text-4xl">
                     🚀
                   </div>
-                  <h3 className="text-2xl font-bold gradient-text mb-2">Launchpad</h3>
-                  <p className="text-dark-400 mb-1">Version 1.0.0</p>
+                  <h3 className="text-2xl font-bold gradient-text mb-2">LaunchIt</h3>
+                  <p className="text-dark-400 mb-1">Version 1.1.0</p>
                   <p className="text-sm text-dark-500">
                     A powerful bookmark and app launcher
                   </p>
@@ -1122,6 +1301,73 @@ export function SettingsModal() {
           </button>
         </div>
       </div>
+
+      {/* Delete All Confirmation Modal */}
+      {isDeleteAllModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-900 rounded-2xl shadow-2xl w-full max-w-md border border-red-500/">
+            <div className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2 bg-red-500/10 rounded-lg">
+                  <AlertCircle className="w-6 h-6 text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-xl font-semibold text-red-400">Delete All Data?</h2>
+                  <p className="text-sm text-dark-300 mt-1">
+                    This will permanently delete all groups and items. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="input-label">Enter your vault password to confirm</label>
+                  <input
+                    type="password"
+                    value={deleteAllPassword}
+                    onChange={(e) => setDeleteAllPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleDeleteAll()}
+                    className="input-base"
+                    placeholder="Vault password"
+                    autoFocus
+                  />
+                  {deleteAllError && (
+                    <p className="text-sm text-red-400 mt-2">{deleteAllError}</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setIsDeleteAllModalOpen(false);
+                      setDeleteAllPassword('');
+                      setDeleteAllError(null);
+                    }}
+                    className="btn-secondary flex-1"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDeleteAll}
+                    disabled={!deleteAllPassword}
+                    className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Delete All
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Conflict Modal */}
+      <ImportConflictModal
+        isOpen={isConflictModalOpen}
+        onClose={() => setIsConflictModalOpen(false)}
+        conflicts={importConflicts}
+        onResolve={handleConflictResolution}
+      />
 
       {/* Browser Import Modal */}
       <ImportBrowserModal

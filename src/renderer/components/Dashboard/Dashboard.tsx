@@ -1,8 +1,10 @@
 import { useMemo, useState, useEffect } from 'react';
+import Fuse from 'fuse.js';
 import { Plus, Play, LayoutGrid, Grid3x3, List, Sparkles, Loader2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { SortableGroupSection } from './SortableGroupSection';
 import { BatchOperationsBar } from './BatchOperationsBar';
+import { EnhancedSearchBar } from './EnhancedSearchBar';
 import type { AnyItem, BookmarkItem, SSHItem, AppItem, PasswordItem } from '@shared/types';
 
 export function Dashboard() {
@@ -11,6 +13,7 @@ export function Dashboard() {
     groups,
     selectedGroupId,
     searchQuery,
+    searchFilters,
     openAddModal,
     launchGroup,
     settings,
@@ -171,12 +174,25 @@ export function Dashboard() {
   const { displayGroups, filteredItems } = useMemo(() => {
     let filtered = items;
 
+    // Apply search filters first
+    if (searchFilters.type) {
+      filtered = filtered.filter(item => item.type === searchFilters.type);
+    }
+    if (searchFilters.groupId) {
+      filtered = filtered.filter(item => item.groupId === searchFilters.groupId);
+    }
+    if (searchFilters.tags.length > 0) {
+      filtered = filtered.filter(item =>
+        searchFilters.tags.some(tag => item.tags.includes(tag))
+      );
+    }
+
     // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
 
       // Always do text search for exact matches - search all fields including URLs
-      const textMatches = items.filter((item) => {
+      const textMatches = filtered.filter((item) => {
         const searchableText = getSearchableText(item);
         return searchableText.includes(query);
       });
@@ -186,7 +202,7 @@ export function Dashboard() {
       if (useSemanticSearch && semanticResults.size > 0) {
         const textMatchIds = new Set(textMatches.map(item => item.id));
 
-        const semanticMatches = items.filter(item => {
+        const semanticMatches = filtered.filter(item => {
           // Skip items that are already in text matches
           if (textMatchIds.has(item.id)) return false;
 
@@ -227,7 +243,7 @@ export function Dashboard() {
     const displayGroups = groups.filter((group) => groupedItems[group.id]?.length > 0);
 
     return { displayGroups, filteredItems: groupedItems };
-  }, [items, groups, selectedGroupId, searchQuery, semanticResults, useSemanticSearch]);
+  }, [items, groups, selectedGroupId, searchQuery, searchFilters, semanticResults, useSemanticSearch]);
 
   const selectedGroup = selectedGroupId
     ? groups.find((g) => g.id === selectedGroupId)
@@ -300,6 +316,11 @@ export function Dashboard() {
               </button>
             </div>
           </div>
+
+          {/* Enhanced Search Bar */}
+          <div className="mt-4">
+            <EnhancedSearchBar />
+          </div>
         </div>
 
         {/* Content */}
@@ -344,7 +365,7 @@ function EmptyState({
         <span className="text-4xl">🚀</span>
       </div>
       <h2 className="text-xl font-semibold text-dark-200 mb-2">
-        {hasGroups ? 'No items yet' : 'Welcome to Launchpad'}
+        {hasGroups ? 'No items yet' : 'Welcome to LaunchIt'}
       </h2>
       <p className="text-dark-400 text-center max-w-md mb-6">
         {hasGroups

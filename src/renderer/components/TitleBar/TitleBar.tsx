@@ -10,12 +10,18 @@ import {
   Image,
   Loader2,
   Lock,
+  Unlock, // Added Unlock icon
   Activity,
   Cloud,
   CheckCircle2,
   CloudOff,
   CheckSquare,
   Sparkles,
+  Command,
+  User, // Added User icon
+  AlertCircle, // Added AlertCircle icon
+  Eye, // Added Eye icon
+  EyeOff, // Added EyeOff icon
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import type { NetworkProfile } from '@shared/types';
@@ -40,7 +46,9 @@ export function TitleBar() {
     isFetchingFavicons,
     faviconProgress,
     isVaultSetup,
+    isVaultLocked,
     lockVault,
+    unlockVault,
     checkAllHealth,
     isCheckingHealth,
     healthCheckResults,
@@ -50,7 +58,15 @@ export function TitleBar() {
     settings,
     isSelectionMode,
     toggleSelectionMode,
+    openCommandPalette,
+    openVaultResetModal,
   } = useStore();
+
+  // Unlock modal state
+  const [isUnlockModalOpen, setIsUnlockModalOpen] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [showUnlockPassword, setShowUnlockPassword] = useState(false);
 
   // Count health status
   const healthCounts = Object.values(healthCheckResults).reduce(
@@ -69,6 +85,28 @@ export function TitleBar() {
 
   const activeProfileData = profiles.find((p) => p.id === activeProfile) || profiles[0];
   const ActiveIcon = activeProfileData.icon;
+
+  const handleUnlock = async () => {
+    setUnlockError(null);
+
+    const result = await window.api.encryption.unlock(unlockPassword);
+    if (result.success) {
+      await unlockVault();
+      setIsUnlockModalOpen(false);
+      setUnlockPassword('');
+      setShowUnlockPassword(false);
+    } else {
+      setUnlockError('Incorrect password');
+    }
+  };
+
+  const handleLockToggle = () => {
+    if (isVaultLocked) {
+      setIsUnlockModalOpen(true);
+    } else {
+      lockVault();
+    }
+  };
 
   const activeBrowser = browsers.find((b) => b.id === selectedBrowser) || browsers[0];
 
@@ -103,6 +141,84 @@ export function TitleBar() {
           )}
         </div>
       </div>
+
+      {/* Unlock Modal */}
+      {isUnlockModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-dark-900 rounded-2xl shadow-2xl w-full max-w-md border border-dark-700">
+            <div className="p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-2 bg-accent-warning/10 rounded-lg">
+                  <Lock className="w-6 h-6 text-accent-warning" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-xl font-semibold text-dark-100">Unlock Vault</h2>
+                  <p className="text-sm text-dark-400 mt-1">
+                    Enter your master password to unlock encrypted data
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="input-label">Master Password</label>
+                  <div className="relative">
+                    <input
+                      type={showUnlockPassword ? 'text' : 'password'}
+                      value={unlockPassword}
+                      onChange={(e) => setUnlockPassword(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
+                      className="input-base pr-12"
+                      placeholder="Enter your password"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowUnlockPassword(!showUnlockPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200"
+                    >
+                      {showUnlockPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {unlockError && (
+                    <p className="text-sm text-red-400 mt-2">{unlockError}</p>
+                  )}
+                  <button
+                    onClick={() => {
+                      setIsUnlockModalOpen(false);
+                      openVaultResetModal();
+                    }}
+                    className="text-sm text-accent-primary hover:text-accent-primary/80 transition-colors mt-2 text-left"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setIsUnlockModalOpen(false);
+                      setUnlockPassword('');
+                      setUnlockError(null);
+                      setShowUnlockPassword(false);
+                    }}
+                    className="btn-secondary flex-1"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleUnlock}
+                    disabled={!unlockPassword}
+                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Unlock
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Right: Browser Selector, Profile Selector & Settings */}
       <div className="titlebar-no-drag flex items-center gap-2">
@@ -360,17 +476,27 @@ export function TitleBar() {
           <CheckSquare className="w-5 h-5" />
         </button>
 
-        {/* Lock Vault Button */}
+        {/* Lock/Unlock Vault Button */}
         {isVaultSetup && (
           <button
-            onClick={lockVault}
+            onClick={handleLockToggle}
             className="p-2 rounded-lg text-dark-400 hover:text-accent-warning hover:bg-dark-800 
                      transition-all duration-200"
-            title="Lock Vault"
+            title={isVaultLocked ? 'Unlock Vault' : 'Lock Vault'}
           >
-            <Lock className="w-5 h-5" />
+            {isVaultLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
           </button>
         )}
+
+        {/* Command Palette */}
+        <button
+          onClick={openCommandPalette}
+          className="p-2 rounded-lg text-dark-400 hover:text-dark-200 hover:bg-dark-800 
+                   transition-all duration-200"
+          title="Command Palette (Cmd+K)"
+        >
+          <Command className="w-5 h-5" />
+        </button>
 
         {/* Settings */}
         <button

@@ -1,6 +1,6 @@
 {
   "name": "launchit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A powerful launcher for bookmarks, SSH connections, apps, and passwords with network profile support. Features AI-powered categorization, semantic search, browser extensions, automatic backups, sync, encryption, and more.",
   "main": "dist/main/index.js",
   "scripts": {
@@ -35,10 +35,13 @@
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
     "@dnd-kit/sortable": "^8.0.0",
+    "@types/react-window": "^1.8.8",
     "electron-store": "^8.1.0",
+    "fuse.js": "^7.1.0",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-window": "^2.2.4",
     "sql.js": "^1.9.0",
     "zustand": "^4.4.7"
   },
@@ -54,7 +57,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "assets/icon.icns",
+      "icon": "assets/icon.png",
       "target": [
         "dmg",
         "zip"

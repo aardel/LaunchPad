@@ -79,7 +79,7 @@ export function QuickSearch() {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Search Launchpad..."
+                    placeholder="Search LaunchIt..."
                     className="flex-1 bg-transparent border-none outline-none text-lg text-dark-100 placeholder:text-dark-500"
                 />
                 <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-dark-700 bg-dark-800/50 text-dark-500 text-[10px] font-medium uppercase tracking-wider">

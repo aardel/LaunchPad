@@ -310,6 +310,13 @@ export function ItemCard({ item, compact = false }: { item: AnyItem; compact?: b
       <div
         ref={cardRef}
         onMouseMove={handleMouseMove}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(item.id);
+          } else {
+            launchItem(item);
+          }
+        }}
         className={`card-base ${compact ? 'p-3' : 'p-4'} cursor-pointer group relative ${isSelectionMode && isSelected ? 'ring-2 ring-accent-primary' : ''
           }`}
         style={
@@ -351,17 +358,8 @@ export function ItemCard({ item, compact = false }: { item: AnyItem; compact?: b
           </div>
         )}
 
-        {/* Clickable Content Area */}
-        <div
-          className="relative z-10"
-          onClick={() => {
-            if (isSelectionMode) {
-              toggleItemSelection(item.id);
-            } else {
-              launchItem(item);
-            }
-          }}
-        >
+        {/* Content Area */}
+        <div className="relative z-10">
           {/* Header */}
           <div className={`flex items-start justify-between ${compact ? 'mb-2' : 'mb-3'}`}>
             {/* Icon */}

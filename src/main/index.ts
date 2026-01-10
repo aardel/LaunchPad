@@ -44,6 +44,12 @@ let backupService: BackupService;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+// Isolate development data
+if (isDev) {
+  const userDataPath = app.getPath('userData');
+  app.setPath('userData', `${userDataPath}-dev`);
+}
+
 // Helper to ensure db is ready
 function getDb(): DatabaseService {
   if (!db) {
@@ -71,7 +77,14 @@ function createWindow() {
 
   // Load the app
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    // Try to find the correct port from environment or common defaults
+    const port = process.env.VITE_PORT || '5173';
+    mainWindow.loadURL(`http://localhost:${port}`).catch(() => {
+      // If 5173 fails, try 5174, then 5175
+      mainWindow?.loadURL('http://localhost:5174').catch(() => {
+        mainWindow?.loadURL('http://localhost:5175');
+      });
+    });
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
@@ -101,12 +114,12 @@ async function initializeServices() {
 
   tailscale = new TailscaleService();
   browserService = new BrowserService();
-  launcher = new LauncherService(browserService);
+  faviconService = new FaviconService();
+  healthCheckService = new HealthCheckService();
   encryption = new EncryptionService();
   importExport = new ImportExportService();
   browserBookmarks = new BrowserBookmarksService();
-  faviconService = new FaviconService();
-  healthCheckService = new HealthCheckService();
+  launcher = new LauncherService(browserService, healthCheckService);
   syncService = new SyncService(encryption);
   extensionServer = new ExtensionServer(db);
   backupService = new BackupService();
@@ -134,6 +147,61 @@ async function initializeServices() {
 }
 
 function setupIPC() {
+  // Helper function to trigger sync after data changes (with debounce)
+  let syncTimeout: NodeJS.Timeout | null = null;
+  const triggerSync = () => {
+    // Clear existing timeout
+    if (syncTimeout) {
+      clearTimeout(syncTimeout);
+    }
+
+    // Debounce: wait 2 seconds after last change before syncing
+    syncTimeout = setTimeout(() => {
+      try {
+        const settings = getDb().getSettings();
+        if (settings.syncEnabled && encryption?.isUnlocked()) {
+          // Notify renderer that sync is starting
+          mainWindow?.webContents.send('sync:status', { syncing: true });
+
+          // Sync in background, don't wait for result
+          syncService.upload(
+            settings.syncUrl!,
+            settings.syncUsername!,
+            settings.syncPassword!,
+            getDb().getAllGroups(),
+            getDb().getAllItems()
+          ).then((result: any) => {
+            if (result.success) {
+              getDb().updateSettings({ lastSync: new Date().toISOString() });
+              // Notify renderer that sync completed
+              mainWindow?.webContents.send('sync:status', {
+                syncing: false,
+                success: true,
+                lastSync: new Date().toISOString()
+              });
+            } else {
+              // Notify renderer that sync failed
+              mainWindow?.webContents.send('sync:status', {
+                syncing: false,
+                success: false,
+                error: result.error
+              });
+            }
+          }).catch((error: any) => {
+            // Notify renderer that sync failed
+            mainWindow?.webContents.send('sync:status', {
+              syncing: false,
+              success: false,
+              error: error.message
+            });
+          });
+        }
+      } catch {
+        // Silently fail
+      }
+    }, 2000); // 2 second debounce
+  };
+
   // ===== Items =====
   ipcMain.handle('items:getAll', async (): Promise<IPCResponse<AnyItem[]>> => {
     try {
@@ -251,6 +319,29 @@ function setupIPC() {
     }
   });
 
+  ipcMain.handle('items:bulkReplaceAddress', async (_, ids: string[], searchText: string, replacementText: string, profile: string): Promise<IPCResponse<void>> => {
+    try {
+      // Create backup before bulk update
+      if (backupService) {
+        const groups = getDb().getAllGroups();
+        const items = getDb().getAllItems();
+        await backupService.createBackup(groups, items);
+      }
+
+      getDb().bulkReplaceAddress(ids, searchText, replacementText, profile);
+      triggerSync();
+
+      // Notify renderer
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('backup:created', { timestamp: new Date().toISOString() });
+      }
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
   // ===== Groups =====
   ipcMain.handle('groups:getAll', async (): Promise<IPCResponse<Group[]>> => {
     try {
@@ -312,32 +403,20 @@ function setupIPC() {
   });
 
   // ===== Launcher =====
-  ipcMain.handle('launch:item', async (_, item: AnyItem, profile: NetworkProfile, browserId?: string): Promise<IPCResponse<void>> => {
+  ipcMain.handle('launch:item', async (_, item: AnyItem, profile: NetworkProfile, browserId?: string): Promise<IPCResponse<{ profileUsed: NetworkProfile; routed: boolean }>> => {
     try {
-      let decryptedPassword: string | undefined;
       const settings = getDb().getSettings();
-      const terminal = settings.defaultTerminal;
-
-      // For SSH items, try to decrypt the password if it exists
-      if (item.type === 'ssh') {
-        const sshItem = item as any;
-        if (sshItem.credentials?.password && encryption.isUnlocked()) {
-          try {
-            const decrypted = encryption.decrypt(sshItem.credentials.password);
-            // Only use password if it's not empty
-            if (decrypted && decrypted.trim()) {
-              decryptedPassword = decrypted;
-            }
-          } catch (err) {
-            console.log('Could not decrypt SSH password:', err);
-            // No password will be used - standard SSH
-          }
-        }
+      let decryptedPassword;
+      if (item.type === 'ssh' && (item as any).credentials?.password) {
+        decryptedPassword = encryption?.decrypt((item as any).credentials.password);
       }
 
-      await launcher.launchItem(item, profile, browserId, decryptedPassword, terminal);
-      getDb().incrementAccessCount(item.id);
-      return { success: true };
+      const result = await launcher?.launchItem(item, profile, browserId, decryptedPassword, settings.defaultTerminal, settings.smartRoutingEnabled);
+
+      // Update last accessed
+      getDb().updateLastAccessed(item.id);
+
+      return { success: true, data: result };
     } catch (error) {
       return { success: false, error: String(error) };
     }
@@ -345,20 +424,18 @@ function setupIPC() {
 
   ipcMain.handle('launch:group', async (_, groupId: string, profile: NetworkProfile, browserId?: string): Promise<IPCResponse<void>> => {
     try {
-      const database = getDb();
-      const settings = database.getSettings();
-      const terminal = settings.defaultTerminal;
-      const items = database.getItemsByGroup(groupId);
-      const group = database.getGroup(groupId);
-      const delay = group?.batchOpenDelay || 500;
+      const items = getDb().getItemsByGroup(groupId);
+      const settings = getDb().getSettings();
 
-      for (let i = 0; i < items.length; i++) {
-        await launcher.launchItem(items[i], profile, browserId, undefined, terminal);
-        database.incrementAccessCount(items[i].id);
-        if (i < items.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, delay));
+      for (const item of items) {
+        let decryptedPassword;
+        if (item.type === 'ssh' && (item as any).credentials?.password) {
+          decryptedPassword = encryption?.decrypt((item as any).credentials.password);
         }
+        await launcher?.launchItem(item, profile, browserId, decryptedPassword, settings.defaultTerminal, settings.smartRoutingEnabled);
+        getDb().updateLastAccessed(item.id);
       }
+
       return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -708,6 +785,10 @@ function setupIPC() {
           username: (item as any).username,
           appPath: (item as any).appPath,
           arguments: (item as any).arguments,
+          credentials: (item as any).credentials,
+          service: (item as any).service,
+          url: (item as any).url,
+          sshKey: (item as any).sshKey,
         });
         itemsImported++;
       }
@@ -718,6 +799,255 @@ function setupIPC() {
           groupsCount: result.data.groups.length,
           itemsCount: itemsImported,
         }
+      };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Analyze import for conflicts
+  ipcMain.handle('data:analyzeImport', async (): Promise<IPCResponse<{
+    conflicts: Array<{
+      importedGroup: Group;
+      existingGroup: Group;
+      existingItemCount: number;
+    }>;
+    safeGroups: Group[];
+    safeItems: AnyItem[];
+    importData: ExportData;
+  }>> => {
+    try {
+      const result = await importExport.importData();
+      if (!result.success || !result.data) {
+        return { success: false, error: result.error };
+      }
+
+      const database = getDb();
+      const existingGroups = database.getAllGroups();
+      const existingItems = database.getAllItems();
+
+      // Analyze for conflicts
+      const conflicts: Array<{
+        importedGroup: Group;
+        existingGroup: Group;
+        existingItemCount: number;
+      }> = [];
+      const safeGroups: Group[] = [];
+      const safeItems: AnyItem[] = [];
+
+      // Create a map of group IDs to item counts
+      const groupItemCounts = new Map<string, number>();
+      existingItems.forEach(item => {
+        const count = groupItemCounts.get(item.groupId) || 0;
+        groupItemCounts.set(item.groupId, count + 1);
+      });
+
+      // Check each imported group for conflicts
+      result.data.groups.forEach(importedGroup => {
+        const existingGroup = existingGroups.find(
+          g => g.name.toLowerCase() === importedGroup.name.toLowerCase()
+        );
+
+        if (existingGroup) {
+          const itemCount = groupItemCounts.get(existingGroup.id) || 0;
+
+          if (itemCount > 0) {
+            // Conflict: existing group has items
+            conflicts.push({
+              importedGroup,
+              existingGroup,
+              existingItemCount: itemCount,
+            });
+          } else {
+            // Safe: existing group is empty, can be overwritten
+            safeGroups.push(importedGroup);
+            const groupItems = result.data?.items.filter(i => i.groupId === importedGroup.id) || [];
+            safeItems.push(...groupItems);
+          }
+        } else {
+          // Safe: no existing group with this name
+          safeGroups.push(importedGroup);
+          const groupItems = result.data?.items.filter(i => i.groupId === importedGroup.id) || [];
+          safeItems.push(...groupItems);
+        }
+      });
+
+      return {
+        success: true,
+        data: {
+          conflicts,
+          safeGroups,
+          safeItems,
+          importData: result.data,
+        },
+      };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  // Import with conflict resolutions
+  ipcMain.handle('data:importWithResolutions', async (
+    _,
+    importData: ExportData,
+    safeGroups: Group[],
+    safeItems: AnyItem[],
+    resolutions: Record<string, 'merge' | 'replace' | 'skip'>
+  ): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> => {
+    try {
+      const database = getDb();
+      const existingGroups = database.getAllGroups();
+      const existingItems = database.getAllItems();
+
+      const groupIdMap = new Map<string, string>();
+      let groupsImported = 0;
+      let itemsImported = 0;
+
+      // Helper to get unique key for deduplication
+      const getItemKey = (item: AnyItem): string => {
+        if (item.type === 'bookmark') {
+          const bookmark = item as any;
+          const url = `${bookmark.protocol}://${bookmark.networkAddresses?.local || ''}${bookmark.port ? `:${bookmark.port}` : ''}${bookmark.path || ''}`;
+          return `${item.name.toLowerCase()}|${url.toLowerCase()}`;
+        } else if (item.type === 'app') {
+          const app = item as any;
+          return `${item.name.toLowerCase()}|${app.command?.toLowerCase() || ''}`;
+        } else if (item.type === 'ssh') {
+          const ssh = item as any;
+          return `${item.name.toLowerCase()}|${ssh.host?.toLowerCase() || ''}|${ssh.port || ''}`;
+        }
+        return item.name.toLowerCase();
+      };
+
+      // Import safe groups first
+      for (const group of safeGroups) {
+        // Check if empty group exists, delete it
+        const existingGroup = existingGroups.find(
+          g => g.name.toLowerCase() === group.name.toLowerCase()
+        );
+        if (existingGroup) {
+          database.deleteGroup(existingGroup.id);
+        }
+
+        const newGroup = database.createGroup({
+          name: group.name,
+          icon: group.icon,
+          color: group.color,
+          defaultProfile: group.defaultProfile,
+          batchOpenDelay: group.batchOpenDelay,
+        });
+        groupIdMap.set(group.id, newGroup.id);
+        groupsImported++;
+      }
+
+      // Import safe items
+      for (const item of safeItems) {
+        const newGroupId = groupIdMap.get(item.groupId);
+        if (!newGroupId) continue;
+
+        database.createItem({
+          type: item.type,
+          name: item.name,
+          description: item.description,
+          icon: item.icon,
+          color: item.color,
+          groupId: newGroupId,
+          tags: item.tags,
+          protocol: (item as any).protocol,
+          port: (item as any).port,
+          path: (item as any).path,
+          networkAddresses: (item as any).networkAddresses,
+          username: (item as any).username,
+          appPath: (item as any).appPath,
+          arguments: (item as any).arguments,
+          credentials: (item as any).credentials,
+          service: (item as any).service,
+          url: (item as any).url,
+          sshKey: (item as any).sshKey,
+        });
+        itemsImported++;
+      }
+
+      // Handle conflict resolutions
+      for (const [importedGroupId, resolution] of Object.entries(resolutions)) {
+        if (resolution === 'skip') continue;
+
+        const importedGroup = importData.groups.find(g => g.id === importedGroupId);
+        if (!importedGroup) continue;
+
+        const existingGroup = existingGroups.find(
+          g => g.name.toLowerCase() === importedGroup.name.toLowerCase()
+        );
+        if (!existingGroup) continue;
+
+        if (resolution === 'replace') {
+          // Delete all items in existing group
+          const itemsToDelete = existingItems.filter(i => i.groupId === existingGroup.id);
+          itemsToDelete.forEach(item => database.deleteItem(item.id));
+
+          // Import all items from imported group
+          const itemsToImport = importData.items.filter(i => i.groupId === importedGroupId);
+          for (const item of itemsToImport) {
+            database.createItem({
+              type: item.type,
+              name: item.name,
+              description: item.description,
+              icon: item.icon,
+              color: item.color,
+              groupId: existingGroup.id,
+              tags: item.tags,
+              protocol: (item as any).protocol,
+              port: (item as any).port,
+              path: (item as any).path,
+              networkAddresses: (item as any).networkAddresses,
+              username: (item as any).username,
+              appPath: (item as any).appPath,
+              arguments: (item as any).arguments,
+            });
+            itemsImported++;
+          }
+          groupsImported++;
+        } else if (resolution === 'merge') {
+          // Deduplicate and merge
+          const existingGroupItems = existingItems.filter(i => i.groupId === existingGroup.id);
+          const importedItems = importData.items.filter(i => i.groupId === importedGroupId);
+
+          const existingKeys = new Set(existingGroupItems.map(getItemKey));
+          const uniqueNewItems = importedItems.filter(item => !existingKeys.has(getItemKey(item)));
+
+          for (const item of uniqueNewItems) {
+            database.createItem({
+              type: item.type,
+              name: item.name,
+              description: item.description,
+              icon: item.icon,
+              color: item.color,
+              groupId: existingGroup.id,
+              tags: item.tags,
+              protocol: (item as any).protocol,
+              port: (item as any).port,
+              path: (item as any).path,
+              networkAddresses: (item as any).networkAddresses,
+              username: (item as any).username,
+              appPath: (item as any).appPath,
+              arguments: (item as any).arguments,
+              credentials: (item as any).credentials,
+              service: (item as any).service,
+              url: (item as any).url,
+              sshKey: (item as any).sshKey,
+            });
+            itemsImported++;
+          }
+          groupsImported++;
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          groupsCount: groupsImported,
+          itemsCount: itemsImported,
+        },
       };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -768,6 +1098,10 @@ function setupIPC() {
           username: (item as any).username,
           appPath: (item as any).appPath,
           arguments: (item as any).arguments,
+          credentials: (item as any).credentials,
+          service: (item as any).service,
+          url: (item as any).url,
+          sshKey: (item as any).sshKey,
         });
         itemsImported++;
       }
@@ -963,12 +1297,57 @@ function setupIPC() {
         return { success: false, error: 'Invalid current password' };
       }
 
-      // Set up with new password
+      // 1. Decrypt all existing credentials with old key
+      const items = database.getAllItems();
+      const itemsToUpdate: {
+        id: string;
+        decryptedCredentials: { username?: string; password?: string; notes?: string }
+      }[] = [];
+
+      for (const item of items) {
+        if ((item.type === 'bookmark' || item.type === 'ssh' || item.type === 'password') && item.credentials) {
+          try {
+            const decrypted: { username?: string; password?: string; notes?: string } = {};
+
+            if (item.credentials.username) {
+              decrypted.username = encryption.decrypt(item.credentials.username);
+            }
+            if (item.credentials.password) {
+              decrypted.password = encryption.decrypt(item.credentials.password);
+            }
+            if (item.credentials.notes) {
+              decrypted.notes = encryption.decrypt(item.credentials.notes);
+            }
+
+            itemsToUpdate.push({ id: item.id, decryptedCredentials: decrypted });
+          } catch (e) {
+            console.error(`Failed to decrypt item ${item.id} during password change:`, e);
+          }
+        }
+      }
+
+      // 2. Set up with new password (switches internal key)
       const newSalt = await encryption.setMasterPassword(newPassword);
       const newVerificationData = encryption.createVerificationData(newPassword, newSalt);
 
-      // TODO: Re-encrypt all stored credentials with new key
+      // 3. Re-encrypt all held credentials with new key
+      for (const update of itemsToUpdate) {
+        const encryptedCreds: { username?: string; password?: string; notes?: string } = {};
 
+        if (update.decryptedCredentials.username) {
+          encryptedCreds.username = encryption.encrypt(update.decryptedCredentials.username);
+        }
+        if (update.decryptedCredentials.password) {
+          encryptedCreds.password = encryption.encrypt(update.decryptedCredentials.password);
+        }
+        if (update.decryptedCredentials.notes) {
+          encryptedCreds.notes = encryption.encrypt(update.decryptedCredentials.notes);
+        }
+
+        database.updateItem({ id: update.id, credentials: encryptedCreds });
+      }
+
+      // 4. Save new settings
       database.updateSettings({
         encryptionSalt: newSalt,
         encryptionVerification: newVerificationData,
@@ -999,6 +1378,31 @@ function setupIPC() {
       }
       const decrypted = encryption.decrypt(ciphertext);
       return { success: true, data: decrypted };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('encryption:resetVault', async (): Promise<IPCResponse<void>> => {
+    try {
+      const database = getDb();
+
+      // 1. Clear all credentials from items
+      const items = database.getAllItems();
+      for (const item of items) {
+        if (item.type === 'bookmark' || item.type === 'ssh' || item.type === 'password') {
+          database.updateItem({ id: item.id, credentials: undefined });
+        }
+      }
+
+      // 2. Delete vault settings (salt, verification data)
+      database.deleteSetting('encryptionSalt');
+      database.deleteSetting('encryptionVerification');
+
+      // 3. Reset encryption service
+      encryption.lock();
+
+      return { success: true };
     } catch (error) {
       return { success: false, error: String(error) };
     }
@@ -1184,60 +1588,83 @@ function setupIPC() {
     }
   });
 
-  // Helper function to trigger sync after data changes (with debounce)
-  let syncTimeout: NodeJS.Timeout | null = null;
-  const triggerSync = () => {
-    // Clear existing timeout
-    if (syncTimeout) {
-      clearTimeout(syncTimeout);
+  // ===== Dashboard Monitoring =====
+  let dashboardPollingInterval: NodeJS.Timeout | null = null;
+
+  ipcMain.handle('dashboard:getMetrics', async (): Promise<IPCResponse<import('../shared/types').ServiceMetrics[]>> => {
+    try {
+      const items = getDb().getAllItems();
+      const bookmarks = items.filter(item => item.type === 'bookmark');
+      const settings = getDb().getSettings();
+
+      const metrics: import('../shared/types').ServiceMetrics[] = bookmarks.map(item => {
+        const history = healthCheckService?.getMetricsHistory(item.id) || [];
+        const uptime = healthCheckService?.calculateUptime(item.id) || 100;
+        const lastCheck = history[history.length - 1];
+
+        return {
+          itemId: item.id,
+          itemName: item.name,
+          currentStatus: lastCheck?.success ? 'up' : 'down',
+          responseTime: lastCheck?.responseTime || 0,
+          uptime: uptime,
+          lastChecked: lastCheck?.timestamp || new Date().toISOString(),
+          history: history.slice(-20) // Last 20 data points for charts
+        };
+      });
+
+      return { success: true, data: metrics };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
+  });
 
-    // Debounce: wait 2 seconds after last change before syncing
-    syncTimeout = setTimeout(() => {
-      try {
-        const settings = getDb().getSettings();
-        if (settings.syncEnabled && encryption.isUnlocked()) {
-          // Notify renderer that sync is starting
-          mainWindow?.webContents.send('sync:status', { syncing: true });
-
-          // Sync in background, don't wait for result
-          syncService.upload(
-            settings.syncUrl!,
-            settings.syncUsername!,
-            settings.syncPassword!,
-            getDb().getAllGroups(),
-            getDb().getAllItems()
-          ).then((result) => {
-            if (result.success) {
-              getDb().updateSettings({ lastSync: new Date().toISOString() });
-              // Notify renderer that sync completed
-              mainWindow?.webContents.send('sync:status', {
-                syncing: false,
-                success: true,
-                lastSync: new Date().toISOString()
-              });
-            } else {
-              // Notify renderer that sync failed
-              mainWindow?.webContents.send('sync:status', {
-                syncing: false,
-                success: false,
-                error: result.error
-              });
-            }
-          }).catch((error) => {
-            // Notify renderer that sync failed
-            mainWindow?.webContents.send('sync:status', {
-              syncing: false,
-              success: false,
-              error: error.message
-            });
-          });
-        }
-      } catch {
-        // Silently fail
+  ipcMain.handle('dashboard:startMonitoring', async (_, interval: number = 30000): Promise<IPCResponse<void>> => {
+    try {
+      // Clear any existing interval
+      if (dashboardPollingInterval) {
+        clearInterval(dashboardPollingInterval);
       }
-    }, 2000); // 2 second debounce
-  };
+
+      // Start background polling
+      dashboardPollingInterval = setInterval(async () => {
+        try {
+          const items = getDb().getAllItems();
+          const bookmarks = items.filter(item => item.type === 'bookmark') as any[];
+          const settings = getDb().getSettings();
+
+          // Check all bookmarks
+          for (const bookmark of bookmarks) {
+            await healthCheckService?.checkBookmark(bookmark, settings.defaultProfile);
+          }
+
+          // Notify renderer of updates
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('dashboard:metricsUpdated');
+          }
+        } catch (error) {
+          console.error('Dashboard polling error:', error);
+        }
+      }, interval);
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('dashboard:stopMonitoring', async (): Promise<IPCResponse<void>> => {
+    try {
+      if (dashboardPollingInterval) {
+        clearInterval(dashboardPollingInterval);
+        dashboardPollingInterval = null;
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
   ipcMain.handle('quickSearch:hide', async () => {
     quickSearchWindow?.hide();
   });

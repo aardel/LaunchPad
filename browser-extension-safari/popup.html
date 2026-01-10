@@ -1,51 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Launchpad Quick Add</title>
+  <title>LaunchIt Quick Add</title>
   <link rel="stylesheet" href="popup.css">
 </head>
+
 <body>
   <div class="container">
     <div class="header">
-      <h1>🚀 Launchpad</h1>
+      <h1>🚀 LaunchIt</h1>
       <p class="subtitle">Quick Add Bookmark</p>
     </div>
-    
+
     <form id="bookmarkForm">
       <div class="form-group">
         <label for="name">Name</label>
         <input type="text" id="name" required autofocus>
       </div>
-      
+
       <div class="form-group">
         <label for="url">URL</label>
         <input type="url" id="url" required>
       </div>
-      
+
       <div class="form-group">
         <label for="description">Description (optional)</label>
         <input type="text" id="description">
       </div>
-      
+
       <div class="form-group">
         <label for="group">Group</label>
         <select id="group" required>
           <option value="">Loading...</option>
         </select>
       </div>
-      
+
       <div class="form-actions">
         <button type="submit" id="submitBtn" class="btn-primary">
-          <span id="submitText">Add to Launchpad</span>
+          <span id="submitText">Add to LaunchIt</span>
           <span id="submitSpinner" class="spinner hidden"></span>
         </button>
       </div>
-      
+
       <div id="status" class="status hidden"></div>
     </form>
-    
+
     <div class="footer">
       <div id="connectionStatus" class="connection-status">
         <span id="statusIcon" class="status-icon">⏳</span>
@@ -53,8 +55,8 @@
       </div>
     </div>
   </div>
-  
+
   <script src="popup.js"></script>
 </body>
-</html>
 
+</html>

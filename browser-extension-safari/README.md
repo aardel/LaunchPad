@@ -1,6 +1,6 @@
-# Launchpad Safari Extension
+# LaunchIt Safari Extension
 
-Safari Web Extension for quickly adding bookmarks to Launchpad from Safari.
+Safari Web Extension for quickly adding bookmarks to LaunchIt from Safari.
 
 ## Installation
 
@@ -47,10 +47,10 @@ Modern Safari requires extensions to be built as Safari App Extensions using Xco
 
 ## Usage
 
-1. Make sure Launchpad is running (listening on `http://localhost:5174`)
-2. Click the Launchpad extension icon in Safari's toolbar
+1. Make sure LaunchIt is running (listening on `http://localhost:5174`)
+2. Click the LaunchIt extension icon in Safari's toolbar
 3. Fill in bookmark details (name, URL, description, group)
-4. Click "Add to Launchpad"
+4. Click "Add to LaunchIt"
 5. The bookmark will be added to your selected group
 
 ## Differences from Chrome Extension
@@ -68,13 +68,13 @@ Modern Safari requires extensions to be built as Safari App Extensions using Xco
 - Try restarting Safari
 
 **Connection errors:**
-- Make sure Launchpad is running
+- Make sure LaunchIt is running
 - Check that the extension server is listening on port 5174
 - Verify `http://localhost:5174/api/groups` is accessible
 
 **Permission errors:**
 - Safari may prompt for permissions when first using the extension
-- Check Safari → Settings → Extensions → Launchpad Quick Add → Permissions
+- Check Safari → Settings → Extensions → LaunchIt Quick Add → Permissions
 
 ## Development
 

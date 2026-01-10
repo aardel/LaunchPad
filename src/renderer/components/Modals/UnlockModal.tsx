@@ -3,12 +3,13 @@ import { Lock, Eye, EyeOff, Shield, AlertCircle, Loader2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
 export function UnlockModal() {
-  const { 
-    isVaultLocked, 
-    isVaultSetup, 
-    unlockVault, 
-    setupVault, 
-    checkVaultStatus 
+  const {
+    isVaultLocked,
+    isVaultSetup,
+    unlockVault,
+    setupVault,
+    checkVaultStatus,
+    openVaultResetModal,
   } = useStore();
 
   const [password, setPassword] = useState('');
@@ -113,7 +114,7 @@ export function UnlockModal() {
             <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-accent-primary to-accent-secondary rounded-2xl flex items-center justify-center text-4xl shadow-glow">
               🚀
             </div>
-            <h1 className="text-3xl font-bold gradient-text mb-2">Launchpad</h1>
+            <h1 className="text-3xl font-bold gradient-text mb-2">LaunchIt</h1>
             <p className="text-dark-400">Set up your master password</p>
           </div>
 
@@ -235,6 +236,16 @@ export function UnlockModal() {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={openVaultResetModal}
+              className="text-sm text-accent-primary hover:text-accent-primary/80 transition-colors"
+            >
+              Forgot Password?
+            </button>
           </div>
 
           {error && (

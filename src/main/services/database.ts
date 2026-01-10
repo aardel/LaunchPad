@@ -175,8 +175,27 @@ export class DatabaseService {
         launchAtStartup: false,
         cardViewMode: 'normal',
         aiEnabled: false,
+        smartRoutingEnabled: true, // Let's default it to true since it's a "killer" feature
         groqApiKey: undefined,
         globalSearchHotkey: process.platform === 'darwin' ? 'Option+Space' : 'Alt+Space',
+        keyboardShortcuts: {
+          newItem: 'Meta+N',
+          newGroup: 'Meta+G',
+          openSettings: 'Meta+,',
+          focusSearch: 'Meta+F',
+          lockVault: 'Meta+L',
+          commandPalette: 'Meta+K',
+          selectGroup1: '1',
+          selectGroup2: '2',
+          selectGroup3: '3',
+          selectGroup4: '4',
+          selectGroup5: '5',
+          selectGroup6: '6',
+          selectGroup7: '7',
+          selectGroup8: '8',
+          selectGroup9: '9',
+          showAllGroups: '0',
+        },
       };
 
       for (const [key, value] of Object.entries(defaultSettings)) {
@@ -336,6 +355,39 @@ export class DatabaseService {
     }
 
     // Only save once after all deletions (this is the key optimization)
+    this.save();
+  }
+
+  bulkReplaceAddress(ids: string[], searchText: string, replacementText: string, profile: string = 'all'): void {
+    if (ids.length === 0) return;
+
+    for (const id of ids) {
+      const item = this.getItem(id);
+      if (!item || !('networkAddresses' in item)) continue;
+
+      const networkAddresses = { ...item.networkAddresses };
+      let updated = false;
+
+      const profiles = profile === 'all'
+        ? ['local', 'tailscale', 'vpn', 'custom'] as const
+        : [profile] as const;
+
+      for (const p of profiles) {
+        if (networkAddresses[p as keyof typeof networkAddresses] &&
+          networkAddresses[p as keyof typeof networkAddresses]!.includes(searchText)) {
+          networkAddresses[p as keyof typeof networkAddresses] =
+            networkAddresses[p as keyof typeof networkAddresses]!.split(searchText).join(replacementText);
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        this.updateItem({
+          id,
+          networkAddresses
+        });
+      }
+    }
     this.save();
   }
 
@@ -500,6 +552,33 @@ export class DatabaseService {
         settings[row[0] as string] = JSON.parse(row[1] as string);
       }
     }
+
+    // Ensure keyboardShortcuts exist with defaults
+    if (!settings.keyboardShortcuts) {
+      settings.keyboardShortcuts = {
+        newItem: 'Meta+N',
+        newGroup: 'Meta+G',
+        openSettings: 'Meta+,',
+        focusSearch: 'Meta+F',
+        lockVault: 'Meta+L',
+        commandPalette: 'Meta+K',
+        selectGroup1: '1',
+        selectGroup2: '2',
+        selectGroup3: '3',
+        selectGroup4: '4',
+        selectGroup5: '5',
+        selectGroup6: '6',
+        selectGroup7: '7',
+        selectGroup8: '8',
+        selectGroup9: '9',
+        showAllGroups: '0',
+      };
+      // Save the defaults
+      this.db!.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+        ['keyboardShortcuts', JSON.stringify(settings.keyboardShortcuts)]);
+      this.save();
+    }
+
     return settings as AppSettings;
   }
 
@@ -509,6 +588,11 @@ export class DatabaseService {
     }
     this.save();
     return this.getSettings();
+  }
+
+  deleteSetting(key: string): void {
+    this.db!.run('DELETE FROM settings WHERE key = ?', [key]);
+    this.save();
   }
 
   // ===== Helpers =====
@@ -630,6 +714,15 @@ export class DatabaseService {
     } catch (error) {
       console.error('Migration error:', error);
     }
+  }
+
+  updateLastAccessed(id: string): void {
+    const timestamp = new Date().toISOString();
+    this.db!.run(
+      'UPDATE items SET last_accessed_at = ?, access_count = access_count + 1 WHERE id = ?',
+      [timestamp, id]
+    );
+    this.save();
   }
 
   private rowToGroup(row: Record<string, any>): Group {

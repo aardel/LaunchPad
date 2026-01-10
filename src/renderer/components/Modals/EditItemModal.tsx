@@ -6,7 +6,14 @@ import type { Protocol, UpdateItemInput, BookmarkItem, SSHItem, AppItem, Passwor
 const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'custom'];
 
 export function EditItemModal() {
-  const { isEditModalOpen, closeEditModal, editingItem, updateItem, groups } = useStore();
+  const {
+    groups,
+    isEditModalOpen,
+    editingItem,
+    closeEditModal,
+    updateItem,
+    isVaultLocked,
+  } = useStore();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -57,7 +64,7 @@ export function EditItemModal() {
         const bookmark = editingItem as BookmarkItem;
         setProtocol(bookmark.protocol || 'https');
         setPort(bookmark.port?.toString() || '');
-        
+
         // Fix: If path looks like a domain (contains dot, no slash) or matches local address, clear it
         let bookmarkPath = bookmark.path || '';
         const localAddr = bookmark.networkAddresses?.local || '';
@@ -65,17 +72,17 @@ export function EditItemModal() {
           bookmarkPath = ''; // Clear incorrect path
         }
         setPath(bookmarkPath);
-        
+
         setLocalAddress(localAddr);
         setTailscaleAddress(bookmark.networkAddresses?.tailscale || '');
         setVpnAddress(bookmark.networkAddresses?.vpn || '');
         setCredUsername(bookmark.credentials?.username || '');
         setClearExistingPassword(false);
-        
+
         // Decrypt and load the existing password if present
         if (bookmark.credentials?.password) {
           setHasExistingPassword(true);
-          window.api.encryption.decrypt(bookmark.credentials.password).then(res => {
+          window.api.encryption.decrypt(bookmark.credentials.password).then((res: any) => {
             if (res.success && res.data) {
               setCredPassword(res.data);
             } else {
@@ -96,12 +103,12 @@ export function EditItemModal() {
         setTailscaleAddress(ssh.networkAddresses?.tailscale || '');
         setVpnAddress(ssh.networkAddresses?.vpn || '');
         setClearExistingPassword(false);
-        
+
         // Decrypt and load the existing password if present
         if (ssh.credentials?.password) {
           setHasExistingPassword(true);
           // Try to decrypt the password
-          window.api.encryption.decrypt(ssh.credentials.password).then(res => {
+          window.api.encryption.decrypt(ssh.credentials.password).then((res: any) => {
             if (res.success && res.data) {
               setCredPassword(res.data);
             } else {
@@ -122,15 +129,15 @@ export function EditItemModal() {
         setService(password.service || password.name);
         setPasswordUrl(password.url || '');
         setClearExistingPassword(false);
-        
+
         // Decrypt and load credentials if present
         if (password.credentials) {
           setCredUsername(password.credentials.username || '');
           setPasswordNotes(password.credentials.notes || '');
-          
+
           if (password.credentials.password) {
             setHasExistingPassword(true);
-            window.api.encryption.decrypt(password.credentials.password).then(res => {
+            window.api.encryption.decrypt(password.credentials.password).then((res: any) => {
               if (res.success && res.data) {
                 setCredPassword(res.data);
               } else {
@@ -153,6 +160,41 @@ export function EditItemModal() {
       setShowPassword(false);
     }
   }, [editingItem]);
+
+  // Re-decrypt passwords when vault unlocks
+  useEffect(() => {
+    if (!editingItem || isVaultLocked || !hasExistingPassword) return;
+
+    // Vault just unlocked, re-decrypt the password
+    if (editingItem.type === 'bookmark') {
+      const bookmark = editingItem as BookmarkItem;
+      if (bookmark.credentials?.password) {
+        window.api.encryption.decrypt(bookmark.credentials.password).then((res: any) => {
+          if (res.success && res.data) {
+            setCredPassword(res.data);
+          }
+        });
+      }
+    } else if (editingItem.type === 'ssh') {
+      const ssh = editingItem as SSHItem;
+      if (ssh.credentials?.password) {
+        window.api.encryption.decrypt(ssh.credentials.password).then((res: any) => {
+          if (res.success && res.data) {
+            setCredPassword(res.data);
+          }
+        });
+      }
+    } else if (editingItem.type === 'password') {
+      const password = editingItem as PasswordItem;
+      if (password.credentials?.password) {
+        window.api.encryption.decrypt(password.credentials.password).then((res: any) => {
+          if (res.success && res.data) {
+            setCredPassword(res.data);
+          }
+        });
+      }
+    }
+  }, [isVaultLocked, editingItem, hasExistingPassword]);
 
   const handleSelectApp = async () => {
     const result = await window.api.system.selectApp();
@@ -244,7 +286,7 @@ export function EditItemModal() {
       } else if (editingItem.type === 'password') {
         input.service = service.trim() || name.trim();
         input.url = passwordUrl.trim() || undefined;
-        
+
         // Handle credentials: clear, update, or keep existing
         if (clearExistingPassword) {
           input.credentials = null as any;
@@ -462,7 +504,7 @@ export function EditItemModal() {
                       </button>
                     )}
                   </div>
-                  
+
                   {clearExistingPassword ? (
                     <div className="flex items-center justify-between p-3 bg-accent-danger/10 rounded-lg">
                       <span className="text-sm text-accent-danger">Password will be removed</span>
@@ -488,27 +530,36 @@ export function EditItemModal() {
                       </div>
                       <div>
                         <label className="input-label text-xs">Password</label>
-                        <div className="relative">
-                          <input
-                            type={showPassword ? 'text' : 'password'}
-                            value={credPassword}
-                            onChange={(e) => setCredPassword(e.target.value)}
-                            placeholder="Enter password"
-                            className="input-base text-sm pr-12"
-                          />
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setShowPassword(prev => !prev);
-                            }}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200 z-10"
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                        <p className="text-xs text-dark-500 mt-1">Encrypted with your master password</p>
+                        {isVaultLocked ? (
+                          <div className="p-3 bg-accent-warning/10 border border-accent-warning/30 rounded-lg text-sm text-accent-warning flex items-center gap-2">
+                            <Key className="w-4 h-4" />
+                            <span>🔒 Unlock vault to view password</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="relative">
+                              <input
+                                type={showPassword ? 'text' : 'password'}
+                                value={credPassword}
+                                onChange={(e) => setCredPassword(e.target.value)}
+                                placeholder="Enter password"
+                                className="input-base text-sm pr-12"
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setShowPassword(prev => !prev);
+                                }}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200 z-10"
+                              >
+                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                            <p className="text-xs text-dark-500 mt-1">Encrypted with your master password</p>
+                          </>
+                        )}
                       </div>
                     </>
                   )}
@@ -595,7 +646,7 @@ export function EditItemModal() {
                       </button>
                     )}
                   </div>
-                  
+
                   {clearExistingPassword ? (
                     <div className="flex items-center justify-between p-3 bg-accent-danger/10 rounded-lg">
                       <span className="text-sm text-accent-danger">Password will be removed</span>
@@ -612,29 +663,38 @@ export function EditItemModal() {
                       <label className="input-label text-xs">
                         Password {hasExistingPassword && !credPassword && <span className="text-dark-500">(unchanged)</span>}
                       </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={credPassword}
-                          onChange={(e) => setCredPassword(e.target.value)}
-                          placeholder={hasExistingPassword ? '••••••••' : 'Leave empty to use SSH key'}
-                          className="input-base text-sm pr-12"
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setShowPassword(prev => !prev);
-                          }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200 z-10"
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                      <p className="text-xs text-dark-500 mt-1">
-                        {hasExistingPassword ? 'Leave empty to keep existing password' : 'Encrypted with your master password'}
-                      </p>
+                      {isVaultLocked ? (
+                        <div className="p-3 bg-accent-warning/10 border border-accent-warning/30 rounded-lg text-sm text-accent-warning flex items-center gap-2">
+                          <Key className="w-4 h-4" />
+                          <span>🔒 Unlock vault to view password</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              value={credPassword}
+                              onChange={(e) => setCredPassword(e.target.value)}
+                              placeholder={hasExistingPassword ? '••••••••' : 'Leave empty to use SSH key'}
+                              className="input-base text-sm pr-12"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowPassword(prev => !prev);
+                              }}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200 z-10"
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                          <p className="text-xs text-dark-500 mt-1">
+                            {hasExistingPassword ? 'Leave empty to keep existing password' : 'Encrypted with your master password'}
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -708,7 +768,7 @@ export function EditItemModal() {
                       </button>
                     )}
                   </div>
-                  
+
                   {clearExistingPassword ? (
                     <div className="flex items-center justify-between p-3 bg-accent-danger/10 rounded-lg">
                       <span className="text-sm text-accent-danger">Password will be removed</span>
@@ -725,29 +785,38 @@ export function EditItemModal() {
                       <label className="input-label text-xs">
                         Password {hasExistingPassword && !credPassword && <span className="text-dark-500">(unchanged)</span>}
                       </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? 'text' : 'password'}
-                          value={credPassword}
-                          onChange={(e) => setCredPassword(e.target.value)}
-                          placeholder={hasExistingPassword ? '••••••••' : 'Enter password'}
-                          className="input-base text-sm pr-12"
-                        />
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setShowPassword(prev => !prev);
-                          }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200 z-10"
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                      <p className="text-xs text-dark-500 mt-1">
-                        {hasExistingPassword ? 'Leave empty to keep existing password' : 'Encrypted with your master password'}
-                      </p>
+                      {isVaultLocked ? (
+                        <div className="p-3 bg-accent-warning/10 border border-accent-warning/30 rounded-lg text-sm text-accent-warning flex items-center gap-2">
+                          <Key className="w-4 h-4" />
+                          <span>🔒 Unlock vault to view password</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative">
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              value={credPassword}
+                              onChange={(e) => setCredPassword(e.target.value)}
+                              placeholder={hasExistingPassword ? '••••••••' : 'Enter password'}
+                              className="input-base text-sm pr-12"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setShowPassword(prev => !prev);
+                              }}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-dark-400 hover:text-dark-200 z-10"
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                          <p className="text-xs text-dark-500 mt-1">
+                            {hasExistingPassword ? 'Leave empty to keep existing password' : 'Encrypted with your master password'}
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

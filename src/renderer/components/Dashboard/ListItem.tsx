@@ -241,13 +241,10 @@ export function ListItem({
             <input
               type="checkbox"
               checked={isSelected}
-              onChange={(e) => {
-                e.stopPropagation();
-                onSelect();
-              }}
+              readOnly
               className="w-4 h-4 rounded border-2 border-dark-600 bg-dark-800 
                        checked:bg-accent-primary checked:border-accent-primary
-                       focus:ring-2 focus:ring-accent-primary/50 cursor-pointer"
+                       focus:ring-2 focus:ring-accent-primary/50 cursor-pointer pointer-events-none"
             />
           </div>
         )}
@@ -280,7 +277,7 @@ export function ListItem({
             {getHealthIcon()}
             {((item.type === 'bookmark' || item.type === 'ssh') &&
               (item as BookmarkItem | SSHItem).credentials) && (
-                <Key className="w-3.5 h-3.5 text-accent-warning" title="Has credentials" />
+                <span title="Has credentials"><Key className="w-3.5 h-3.5 text-accent-warning" /></span>
               )}
           </div>
           <p className="text-sm text-dark-400 truncate font-mono">{getSubtitle()}</p>

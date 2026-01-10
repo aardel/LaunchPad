@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import Fuse from 'fuse.js';
 import type {
   AnyItem,
   PasswordItem,
@@ -10,7 +11,9 @@ import type {
   UpdateItemInput,
   CreateGroupInput,
   UpdateGroupInput,
+  IPCResponse,
   Browser,
+  ServiceMetrics,
 } from '@shared/types';
 
 interface AppState {
@@ -28,6 +31,12 @@ interface AppState {
   selectedBrowser: string;
   selectedGroupId: string | null;
   searchQuery: string;
+  searchFilters: {
+    type: string | null;
+    groupId: string | null;
+    profile: string | null;
+    tags: string[];
+  };
   isLoading: boolean;
   isFetchingFavicons: boolean;
   faviconProgress: { current: number; total: number };
@@ -50,6 +59,13 @@ interface AppState {
   lastBackupTime: string | null;
   canUndo: boolean;
 
+  // Notification state
+  notification: { message: string; type: 'info' | 'success' | 'warning' | 'error' } | null;
+
+  // Dashboard state
+  dashboardMetrics: ServiceMetrics[];
+  isDashboardMonitoring: boolean;
+
   // Selection state
   selectedItemIds: Set<string>;
   isSelectionMode: boolean;
@@ -61,12 +77,16 @@ interface AppState {
   isGroupModalOpen: boolean;
   editingGroup: Group | null;
   isSettingsOpen: boolean;
+  isCommandPaletteOpen: boolean;
+  isVaultResetModalOpen: boolean;
 
   // Actions
   setActiveProfile: (profile: NetworkProfile) => void;
   setSelectedBrowser: (browserId: string) => void;
   setSelectedGroup: (groupId: string | null) => void;
   setSearchQuery: (query: string) => void;
+  setSearchFilter: (filter: keyof AppState['searchFilters'], value: any) => void;
+  clearSearchFilters: () => void;
 
   // Data actions
   loadData: () => Promise<void>;
@@ -118,6 +138,7 @@ interface AppState {
   clearSelection: () => void;
   batchDeleteItems: (itemIds: string[]) => Promise<void>;
   batchChangeGroup: (itemIds: string[], groupId: string) => Promise<void>;
+  batchReplaceAddress: (itemIds: string[], searchText: string, replacementText: string, profile: string) => Promise<void>;
 
   // Modal actions
   openAddModal: () => void;
@@ -128,6 +149,18 @@ interface AppState {
   closeGroupModal: () => void;
   openSettings: () => void;
   closeSettings: () => void;
+  openCommandPalette: () => void;
+  closeCommandPalette: () => void;
+  openVaultResetModal: () => void;
+  closeVaultResetModal: () => void;
+  resetVault: () => Promise<void>;
+  showNotification: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
+  clearNotification: () => void;
+
+  // Dashboard actions
+  startDashboardMonitoring: (interval?: number) => Promise<void>;
+  stopDashboardMonitoring: () => Promise<void>;
+  refreshDashboardMetrics: () => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -143,6 +176,12 @@ export const useStore = create<AppState>((set, get) => ({
   selectedBrowser: 'default',
   selectedGroupId: null,
   searchQuery: '',
+  searchFilters: {
+    type: null,
+    groupId: null,
+    profile: null,
+    tags: [],
+  },
   isLoading: false,
   isFetchingFavicons: false,
   faviconProgress: { current: 0, total: 0 },
@@ -165,6 +204,13 @@ export const useStore = create<AppState>((set, get) => ({
   lastBackupTime: null,
   canUndo: false,
 
+  // Notification state
+  notification: null,
+
+  // Dashboard state
+  dashboardMetrics: [],
+  isDashboardMonitoring: false,
+
   // Selection state
   selectedItemIds: new Set<string>(),
   isSelectionMode: false,
@@ -176,12 +222,20 @@ export const useStore = create<AppState>((set, get) => ({
   isGroupModalOpen: false,
   editingGroup: null,
   isSettingsOpen: false,
+  isCommandPaletteOpen: false,
+  isVaultResetModalOpen: false,
 
   // Setters
   setActiveProfile: (profile) => set({ activeProfile: profile }),
   setSelectedBrowser: (browserId) => set({ selectedBrowser: browserId }),
   setSelectedGroup: (groupId) => set({ selectedGroupId: groupId }),
   setSearchQuery: (query) => set({ searchQuery: query }),
+  setSearchFilter: (filter, value) => set((state) => ({
+    searchFilters: { ...state.searchFilters, [filter]: value }
+  })),
+  clearSearchFilters: () => set({
+    searchFilters: { type: null, groupId: null, profile: null, tags: [] }
+  }),
 
   // Load all data
   loadData: async () => {
@@ -209,7 +263,7 @@ export const useStore = create<AppState>((set, get) => ({
         selectedBrowser: settingsRes.data?.defaultBrowser || 'default',
         isLoading: false,
       });
-      
+
       // Load recent items after main data is loaded
       await get().loadRecentItems();
     } catch (error) {
@@ -229,6 +283,10 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   refreshTailscaleStatus: async () => {
+    if (!window.api?.tailscale) {
+      console.warn('Tailscale API not available (running outside Electron?)');
+      return;
+    }
     try {
       const res = await window.api.tailscale.getStatus();
       if (res.success) {
@@ -290,7 +348,7 @@ export const useStore = create<AppState>((set, get) => ({
           return newOrder ? { ...item, sortOrder: newOrder.sortOrder } : item;
         }),
       }));
-      
+
       // Persist to database
       await window.api.items.reorder(reorderData);
     } catch (error) {
@@ -314,14 +372,15 @@ export const useStore = create<AppState>((set, get) => ({
           if (decryptRes.success && decryptRes.data) {
             // Copy password to clipboard
             await navigator.clipboard.writeText(decryptRes.data);
-            
+            get().showNotification('Password copied to clipboard', 'success');
+
             // Optionally open URL if provided
             if (passwordItem.url) {
               await window.api.launch.url(passwordItem.url);
             }
-            
+
             // Update access count
-            await window.api.items.getAll().then((res) => {
+            await window.api.items.getAll().then((res: IPCResponse<AnyItem[]>) => {
               if (res.success) {
                 set({ items: res.data || [] });
                 // Refresh recent items after launching
@@ -331,7 +390,7 @@ export const useStore = create<AppState>((set, get) => ({
             return;
           }
         }
-        
+
         // If no password, just open URL if provided
         if (passwordItem.url) {
           await window.api.launch.url(passwordItem.url);
@@ -341,15 +400,20 @@ export const useStore = create<AppState>((set, get) => ({
       }
       return;
     }
-    
+
     // Handle other item types normally
     const { activeProfile, selectedBrowser } = get();
     try {
-      await window.api.launch.item(item, activeProfile, selectedBrowser);
+      const res = await window.api.launch.item(item, activeProfile, selectedBrowser);
+
+      if (res.success && res.data?.routed) {
+        get().showNotification(`Smart Routed to ${res.data.profileUsed}`, 'info');
+      }
+
       // Refresh to update access count
-      const res = await window.api.items.getAll();
-      if (res.success) {
-        set({ items: res.data || [] });
+      const dataRes = await window.api.items.getAll();
+      if (dataRes.success) {
+        set({ items: dataRes.data || [] });
         // Refresh recent items after launching
         await get().loadRecentItems();
       }
@@ -423,7 +487,7 @@ export const useStore = create<AppState>((set, get) => ({
           return newOrder ? { ...group, sortOrder: newOrder.sortOrder } : group;
         }),
       }));
-      
+
       // Persist to database
       await window.api.groups.reorder(reorderData);
     } catch (error) {
@@ -446,7 +510,7 @@ export const useStore = create<AppState>((set, get) => ({
   // Favicon actions
   fetchFavicons: async (forceRefresh: boolean = false) => {
     const { items, favicons } = get();
-    
+
     // Build all bookmark URLs
     const allBookmarkUrls: string[] = [];
     items.forEach((item) => {
@@ -472,7 +536,7 @@ export const useStore = create<AppState>((set, get) => ({
       // Optimize: Get expired favicons first (batch operation)
       const expiredRes = await window.api.favicon.getExpired(allBookmarkUrls);
       const expiredUrls = expiredRes.success && expiredRes.data ? expiredRes.data : [];
-      
+
       // Find missing URLs (not in memory cache and not in expired list)
       const missingUrls: string[] = [];
       for (const url of allBookmarkUrls) {
@@ -484,15 +548,15 @@ export const useStore = create<AppState>((set, get) => ({
           }
         }
       }
-      
+
       urlsToFetch = [...new Set([...missingUrls, ...expiredUrls])]; // Remove duplicates
     }
 
     if (urlsToFetch.length === 0) return;
 
-    set({ 
-      isFetchingFavicons: true, 
-      faviconProgress: { current: 0, total: urlsToFetch.length } 
+    set({
+      isFetchingFavicons: true,
+      faviconProgress: { current: 0, total: urlsToFetch.length }
     });
 
     try {
@@ -500,7 +564,7 @@ export const useStore = create<AppState>((set, get) => ({
       for (let i = 0; i < urlsToFetch.length; i++) {
         const url = urlsToFetch[i];
         set({ faviconProgress: { current: i + 1, total: urlsToFetch.length } });
-        
+
         try {
           const res = await window.api.favicon.get(url, forceRefresh);
           if (res.success) {
@@ -524,7 +588,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   refreshExpiredFavicons: async () => {
     const { items } = get();
-    
+
     // Build all bookmark URLs
     const allBookmarkUrls: string[] = [];
     items.forEach((item) => {
@@ -569,12 +633,16 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Vault actions
   checkVaultStatus: async () => {
+    if (!window.api?.encryption) {
+      console.warn('Encryption API not available (running outside Electron?)');
+      return;
+    }
     try {
       const [setupRes, unlockedRes] = await Promise.all([
         window.api.encryption.isSetup(),
         window.api.encryption.isUnlocked(),
       ]);
-      
+
       set({
         isVaultSetup: setupRes.success && setupRes.data === true,
         isVaultLocked: !(unlockedRes.success && unlockedRes.data === true),
@@ -605,7 +673,7 @@ export const useStore = create<AppState>((set, get) => ({
   checkAllHealth: async () => {
     const { activeProfile } = get();
     set({ isCheckingHealth: true });
-    
+
     try {
       const res = await window.api.healthCheck.checkAll(activeProfile);
       if (res.success && res.data) {
@@ -629,7 +697,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   checkItemHealth: async (itemId: string) => {
     const { activeProfile } = get();
-    
+
     try {
       const res = await window.api.healthCheck.checkItem(itemId, activeProfile);
       if (res.success && res.data) {
@@ -689,12 +757,12 @@ export const useStore = create<AppState>((set, get) => ({
   selectAllItems: () => {
     const { items, selectedGroupId } = get();
     let itemsToSelect = items;
-    
+
     // If a group is selected, only select items in that group
     if (selectedGroupId) {
       itemsToSelect = items.filter(item => item.groupId === selectedGroupId);
     }
-    
+
     set({ selectedItemIds: new Set(itemsToSelect.map(item => item.id)) });
   },
 
@@ -704,7 +772,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   batchDeleteItems: async (itemIds: string[]) => {
     if (itemIds.length === 0) return;
-    
+
     try {
       // Use batch delete for better performance
       const res = await window.api.items.batchDelete(itemIds);
@@ -741,12 +809,28 @@ export const useStore = create<AppState>((set, get) => ({
     await get().loadData();
   },
 
+  batchReplaceAddress: async (itemIds: string[], searchText: string, replacementText: string, profile: string) => {
+    if (itemIds.length === 0) return;
+    try {
+      const res = await window.api.items.bulkReplaceAddress(itemIds, searchText, replacementText, profile);
+      if (res.success) {
+        get().clearSelection();
+        await get().loadData();
+        await get().checkBackup();
+      } else {
+        set({ error: res.error || 'Failed to bulk update addresses' });
+      }
+    } catch (error) {
+      set({ error: String(error) });
+    }
+  },
+
   // Backup actions
   checkBackup: async () => {
     try {
       const res = await window.api.backup.getLatest();
       if (res.success && res.data) {
-        set({ 
+        set({
           lastBackupTime: res.data.timestamp,
           canUndo: true,
         });
@@ -764,7 +848,7 @@ export const useStore = create<AppState>((set, get) => ({
       if (res.success) {
         // Reload all data after undo
         await get().loadData();
-        set({ 
+        set({
           lastBackupTime: null,
           canUndo: false,
         });
@@ -781,19 +865,69 @@ export const useStore = create<AppState>((set, get) => ({
   closeAddModal: () => set({ isAddModalOpen: false }),
   openEditModal: (item) => set({ isEditModalOpen: true, editingItem: item }),
   closeEditModal: () => set({ isEditModalOpen: false, editingItem: null }),
-  openGroupModal: (group) => set({ isGroupModalOpen: true, editingGroup: group || null }),
+  openGroupModal: (group) => set({ isGroupModalOpen: true, editingGroup: group }),
   closeGroupModal: () => set({ isGroupModalOpen: false, editingGroup: null }),
   openSettings: () => set({ isSettingsOpen: true }),
   closeSettings: () => set({ isSettingsOpen: false }),
+  openCommandPalette: () => set({ isCommandPaletteOpen: true }),
+  closeCommandPalette: () => set({ isCommandPaletteOpen: false }),
+  openVaultResetModal: () => set({ isVaultResetModalOpen: true }),
+  closeVaultResetModal: () => set({ isVaultResetModalOpen: false }),
+  resetVault: async () => {
+    const result = await window.api.encryption.resetVault();
+    if (result.success) {
+      // Reload app state to detect vault is no longer setup
+      const settingsRes = await window.api.settings.get();
+      if (settingsRes.success && settingsRes.data) {
+        set({ settings: settingsRes.data, isVaultSetup: false, isVaultLocked: true });
+      }
+      set({ isVaultResetModalOpen: false });
+      get().showNotification('Vault reset successfully. Please set up your vault again.', 'success');
+    } else {
+      get().showNotification(`Failed to reset vault: ${result.error}`, 'error');
+    }
+  },
+  showNotification: (message, type = 'info') => {
+    set({ notification: { message, type } });
+    // Auto-clear after 3 seconds
+    setTimeout(() => {
+      const { notification } = get();
+      if (notification?.message === message) {
+        set({ notification: null });
+      }
+    }, 3000);
+  },
+  clearNotification: () => set({ notification: null }),
+
+  // Dashboard actions
+  startDashboardMonitoring: async (interval = 30000) => {
+    try {
+      await window.api.dashboard.startMonitoring(interval);
+      set({ isDashboardMonitoring: true });
+      // Initial fetch
+      await get().refreshDashboardMetrics();
+    } catch (error) {
+      console.error('Failed to start dashboard monitoring:', error);
+    }
+  },
+
+  stopDashboardMonitoring: async () => {
+    try {
+      await window.api.dashboard.stopMonitoring();
+      set({ isDashboardMonitoring: false });
+    } catch (error) {
+      console.error('Failed to stop dashboard monitoring:', error);
+    }
+  },
+
+  refreshDashboardMetrics: async () => {
+    try {
+      const res = await window.api.dashboard.getMetrics();
+      if (res.success && res.data) {
+        set({ dashboardMetrics: res.data });
+      }
+    } catch (error) {
+      console.error('Failed to refresh dashboard metrics:', error);
+    }
+  },
 }));
-
-// Selector hooks for performance
-export const useItems = () => useStore((state) => state.items);
-export const useGroups = () => useStore((state) => state.groups);
-export const useActiveProfile = () => useStore((state) => state.activeProfile);
-export const useSelectedBrowser = () => useStore((state) => state.selectedBrowser);
-export const useBrowsers = () => useStore((state) => state.browsers);
-export const useTailscaleStatus = () => useStore((state) => state.tailscaleStatus);
-export const useSelectedGroup = () => useStore((state) => state.selectedGroupId);
-export const useSearchQuery = () => useStore((state) => state.searchQuery);
-

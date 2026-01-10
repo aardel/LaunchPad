@@ -1,6 +1,6 @@
-# Launchpad Browser Extension
+# LaunchIt Browser Extension
 
-Browser extension for quickly adding bookmarks to Launchpad from your browser.
+Browser extension for quickly adding bookmarks to LaunchIt from your browser.
 
 ## Installation
 
@@ -22,15 +22,15 @@ Browser extension for quickly adding bookmarks to Launchpad from your browser.
 
 ## Usage
 
-1. Make sure Launchpad is running
-2. Click the Launchpad extension icon in your browser toolbar
+1. Make sure LaunchIt is running
+2. Click the LaunchIt extension icon in your browser toolbar
 3. Fill in the bookmark details (name, URL, description, group)
-4. Click "Add to Launchpad"
+4. Click "Add to LaunchIt"
 5. The bookmark will be added to your selected group
 
 ## Configuration
 
-The extension connects to Launchpad at `http://localhost:5174` by default. This is configured automatically when Launchpad starts.
+The extension connects to LaunchIt at `http://localhost:5174` by default. This is configured automatically when LaunchIt starts.
 
 ## Safari Support
 

@@ -34,6 +34,8 @@ const api = {
       ipcRenderer.invoke('items:batchDelete', ids),
     reorder: (items: { id: string; sortOrder: number }[]): Promise<IPCResponse<void>> =>
       ipcRenderer.invoke('items:reorder', items),
+    bulkReplaceAddress: (ids: string[], searchText: string, replacementText: string, profile?: string): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('items:bulkReplaceAddress', ids, searchText, replacementText, profile),
   },
 
   // Groups
@@ -58,7 +60,7 @@ const api = {
 
   // Launcher
   launch: {
-    item: (item: AnyItem, profile: NetworkProfile, browserId?: string): Promise<IPCResponse<void>> =>
+    item: (item: AnyItem, profile: NetworkProfile, browserId?: string): Promise<IPCResponse<{ profileUsed: NetworkProfile; routed: boolean }>> =>
       ipcRenderer.invoke('launch:item', item, profile, browserId),
     group: (groupId: string, profile: NetworkProfile, browserId?: string): Promise<IPCResponse<void>> =>
       ipcRenderer.invoke('launch:group', groupId, profile, browserId),
@@ -100,10 +102,14 @@ const api = {
       ipcRenderer.invoke('data:export'),
     import: (): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
       ipcRenderer.invoke('data:import'),
+    analyzeImport: (): Promise<IPCResponse<{ groups: any[]; items: any[]; conflicts: any[] }>> =>
+      ipcRenderer.invoke('data:analyzeImport'),
+    importWithResolutions: (importData: any, safeGroups: any[], safeItems: any[], resolutions: Record<string, 'merge' | 'replace' | 'skip'>): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
+      ipcRenderer.invoke('data:importWithResolutions', importData, safeGroups, safeItems, resolutions),
     importSyncFile: (): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
       ipcRenderer.invoke('data:importSyncFile'),
-    importBrowserBookmarks: (groupId: string): Promise<IPCResponse<{ count: number }>> =>
-      ipcRenderer.invoke('data:importBrowserBookmarks', groupId),
+    importBrowserBookmarks: (filePath: string, targetGroupId: string): Promise<IPCResponse<{ count: number }>> =>
+      ipcRenderer.invoke('data:importBrowserBookmarks', filePath, targetGroupId),
   },
 
   // Browser Bookmarks Direct Import
@@ -146,6 +152,8 @@ const api = {
       ipcRenderer.invoke('encryption:encrypt', plaintext),
     decrypt: (ciphertext: string): Promise<IPCResponse<string>> =>
       ipcRenderer.invoke('encryption:decrypt', ciphertext),
+    resetVault: (): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('encryption:resetVault'),
   },
 
   // Health Check
@@ -197,6 +205,16 @@ const api = {
       ipcRenderer.invoke('backup:getLatest'),
     undo: (): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
       ipcRenderer.invoke('backup:undo'),
+  },
+
+  //  Dashboard
+  dashboard: {
+    getMetrics: (): Promise<IPCResponse<import('../shared/types').ServiceMetrics[]>> =>
+      ipcRenderer.invoke('dashboard:getMetrics'),
+    startMonitoring: (interval?: number): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('dashboard:startMonitoring', interval),
+    stopMonitoring: (): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('dashboard:stopMonitoring'),
   },
 };
 

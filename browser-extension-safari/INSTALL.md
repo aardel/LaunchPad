@@ -25,7 +25,7 @@
 
 5. **Enable Extension:**
    - In Safari → Settings → Extensions
-   - Find "Launchpad Quick Add" (if it appears)
+   - Find "LaunchIt Quick Add" (if it appears)
    - Toggle it ON
 
 ## Method 2: Using Xcode (For Proper Distribution)
@@ -71,7 +71,7 @@ Safari Web Extensions need to be packaged as a Safari App Extension:
 - Try using Xcode to build a proper Safari App Extension
 
 **Connection errors:**
-- Verify Launchpad is running
+- Verify LaunchIt is running
 - Check that port 5174 is not blocked
 - Try clicking the status indicator to retry connection
 

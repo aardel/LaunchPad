@@ -45,8 +45,8 @@
 
 ---
 
-## 3. Recent Items ⭐ HIGH PRIORITY
-**Description**: Display recently accessed items. The database already tracks `lastAccessedAt` - we just need to add a UI to show them.
+## 3. Recent Items ✅ COMPLETED
+**Description**: Display recently accessed items.
 
 **Implementation Plan**:
 - ✅ Database already tracks `lastAccessedAt` (already implemented)
@@ -221,8 +221,8 @@
 
 ---
 
-## 10. Bulk Edit ⭐ LOW PRIORITY
-**Description**: Edit multiple items at once - change group, tags, or other common fields for selected items.
+## 10. Bulk Edit ✅ COMPLETED
+**Description**: Edit multiple items at once - change group, tags, or other common fields for selected items. (Implemented as Find & Replace)
 
 **Implementation Plan**:
 - When multiple items selected, show "Bulk Edit" button

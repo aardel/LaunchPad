@@ -126,8 +126,28 @@ export interface AppSettings {
   cardViewMode: 'normal' | 'compact' | 'list'; // Card display mode
   // AI Features
   aiEnabled: boolean;
+  smartRoutingEnabled: boolean;
   groqApiKey?: string; // Encrypted
   globalSearchHotkey: string;
+  // Keyboard shortcuts
+  keyboardShortcuts: {
+    newItem: string;
+    newGroup: string;
+    openSettings: string;
+    focusSearch: string;
+    lockVault: string;
+    commandPalette: string;
+    selectGroup1: string;
+    selectGroup2: string;
+    selectGroup3: string;
+    selectGroup4: string;
+    selectGroup5: string;
+    selectGroup6: string;
+    selectGroup7: string;
+    selectGroup8: string;
+    selectGroup9: string;
+    showAllGroups: string;
+  };
   // Encryption
   encryptionSalt?: string;
   encryptionVerification?: string;
@@ -209,3 +229,19 @@ export interface SearchFilters {
   tags?: string[];
 }
 
+// Dashboard Metrics
+export interface ServiceMetrics {
+  itemId: string;
+  itemName: string;
+  currentStatus: 'up' | 'down' | 'degraded';
+  responseTime: number; // ms
+  uptime: number; // percentage (0-100)
+  lastChecked: string; // ISO timestamp
+  history: MetricDataPoint[];
+}
+
+export interface MetricDataPoint {
+  timestamp: string;
+  responseTime: number;
+  success: boolean;
+}

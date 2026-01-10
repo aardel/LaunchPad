@@ -10,6 +10,10 @@ import { SettingsModal } from './components/Modals/SettingsModal';
 import { UnlockModal } from './components/Modals/UnlockModal';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { QuickSearch } from './components/QuickSearch/QuickSearch';
+import { Toast } from './components/Dashboard/Toast';
+import { DashboardWidget } from './components/Dashboard/DashboardWidget';
+import { CommandPalette } from './components/CommandPalette';
+import { VaultResetModal } from './components/Modals/VaultResetModal';
 
 declare global {
   interface Window {
@@ -24,7 +28,7 @@ declare global {
 }
 
 function App() {
-  const { loadData, isLoading, error, refreshTailscaleStatus, fetchFavicons, refreshExpiredFavicons, items, setSyncStatus, settings, isVaultSetup, isVaultLocked, loadData: reloadData } = useStore();
+  const { loadData, isLoading, error, refreshTailscaleStatus, fetchFavicons, refreshExpiredFavicons, items, setSyncStatus, settings, isVaultSetup, isVaultLocked, loadData: reloadData, refreshDashboardMetrics, isCommandPaletteOpen, closeCommandPalette, isVaultResetModalOpen, closeVaultResetModal, resetVault } = useStore();
 
   useEffect(() => {
     loadData();
@@ -88,7 +92,7 @@ function App() {
       });
     };
 
-    const handleBackupRestored = (_event: any, data: { timestamp: string; groupsCount: number; itemsCount: number }) => {
+    const handleBackupRestored = (_event: any, _data: { timestamp: string; groupsCount: number; itemsCount: number }) => {
       useStore.setState({
         lastBackupTime: null,
         canUndo: false,
@@ -107,6 +111,21 @@ function App() {
       };
     }
   }, [reloadData]);
+
+  // Listen for dashboard metrics updates
+  useEffect(() => {
+    const handleMetricsUpdate = () => {
+      refreshDashboardMetrics();
+    };
+
+    // @ts-ignore - window.electron is available in Electron context
+    if (window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.on('dashboard:metricsUpdated', handleMetricsUpdate);
+      return () => {
+        window.electron.ipcRenderer.removeListener('dashboard:metricsUpdated', handleMetricsUpdate);
+      };
+    }
+  }, [refreshDashboardMetrics]);
 
   // Fetch missing favicons when items first load (deferred to not block UI)
   useEffect(() => {
@@ -167,7 +186,7 @@ function App() {
       <div className="flex items-center justify-center h-screen bg-dark-950">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-accent-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-dark-400 text-sm">Loading Launchpad...</span>
+          <span className="text-dark-400 text-sm">Loading LaunchIt...</span>
         </div>
       </div>
     );
@@ -207,6 +226,14 @@ function App() {
       <GroupModal />
       <SettingsModal />
       <UnlockModal />
+      <Toast />
+      <DashboardWidget />
+      <CommandPalette isOpen={isCommandPaletteOpen} onClose={closeCommandPalette} />
+      <VaultResetModal
+        isOpen={isVaultResetModalOpen}
+        onClose={closeVaultResetModal}
+        onConfirm={resetVault}
+      />
     </div>
   );
 }

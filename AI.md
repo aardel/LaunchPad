@@ -197,5 +197,5 @@ Potential future features:
 
 ---
 
-**Need help?** Check the main README or open an issue on GitHub.
+**Need help?** Check the main `README.md` or open an issue on GitHub.
 
