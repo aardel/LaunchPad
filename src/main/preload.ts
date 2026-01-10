@@ -34,8 +34,8 @@ const api = {
       ipcRenderer.invoke('items:batchDelete', ids),
     reorder: (items: { id: string; sortOrder: number }[]): Promise<IPCResponse<void>> =>
       ipcRenderer.invoke('items:reorder', items),
-    bulkReplaceAddress: (ids: string[], searchText: string, replacementText: string, profile?: string): Promise<IPCResponse<void>> =>
-      ipcRenderer.invoke('items:bulkReplaceAddress', ids, searchText, replacementText, profile),
+    bulkReplaceAddress: (ids: string[], searchText: string, replacementText: string, profile?: string, useRegex?: boolean): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('items:bulkReplaceAddress', ids, searchText, replacementText, profile, useRegex),
   },
 
   // Groups
@@ -228,6 +228,16 @@ const api = {
       ipcRenderer.on('update:status', subscription);
       return () => ipcRenderer.removeListener('update:status', subscription);
     },
+  },
+
+  // Dialog
+  dialog: {
+    openDirectory: (): Promise<any> => ipcRenderer.invoke('dialog:openDirectory'),
+  },
+
+  // Shell
+  shell: {
+    openPath: (path: string): Promise<string> => ipcRenderer.invoke('shell:openPath', path),
   },
 };
 

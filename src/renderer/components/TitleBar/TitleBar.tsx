@@ -1,27 +1,23 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Search,
   Settings,
   Home,
   Globe,
   Shield,
   Wifi,
-  Image,
   Loader2,
   Lock,
-  Unlock, // Added Unlock icon
+  Unlock,
   Activity,
   Cloud,
   CheckCircle2,
   CloudOff,
   CheckSquare,
-  Sparkles,
   Command,
-  User, // Added User icon
-  AlertCircle, // Added AlertCircle icon
-  Eye, // Added Eye icon
-  EyeOff, // Added EyeOff icon
+  Eye,
+  EyeOff,
+  ChevronDown,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import type { NetworkProfile } from '@shared/types';
@@ -39,8 +35,6 @@ export function TitleBar() {
     selectedBrowser,
     setSelectedBrowser,
     browsers,
-    searchQuery,
-    setSearchQuery,
     tailscaleStatus,
     openSettings,
     isFetchingFavicons,
@@ -111,7 +105,7 @@ export function TitleBar() {
   const activeBrowser = browsers.find((b) => b.id === selectedBrowser) || browsers[0];
 
   return (
-    <header className="titlebar-drag-region flex items-center justify-between h-12 px-4 bg-dark-900/80 backdrop-blur-md border-b border-dark-800 relative z-[100]">
+    <header className="titlebar-drag-region flex items-center justify-between h-11 px-4 bg-dark-900/80 backdrop-blur-md border-b border-dark-800 relative z-[100]">
       {/* Left: Logo & Title */}
       <div className="flex items-center gap-3">
         {/* macOS traffic lights spacer */}
@@ -119,28 +113,8 @@ export function TitleBar() {
         <h1 className="text-lg font-semibold gradient-text">LaunchIt</h1>
       </div>
 
-      {/* Center: Search */}
-      <div className="titlebar-no-drag flex-1 max-w-md mx-8">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
-          <input
-            type="text"
-            placeholder={settings?.aiEnabled ? "Search with AI (type 4+ chars)..." : "Search bookmarks, apps, connections..."}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={`w-full pl-10 ${settings?.aiEnabled && searchQuery.length >= 4 ? 'pr-16' : 'pr-4'} py-1.5 text-sm rounded-lg bg-dark-800 border border-dark-700 
-                     text-dark-100 placeholder:text-dark-500
-                     focus:outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary/30
-                     transition-all duration-200`}
-          />
-          {settings?.aiEnabled && searchQuery.length >= 4 && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs text-accent-primary/70">
-              <Sparkles className="w-3 h-3" />
-              <span>AI</span>
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Center: Spacer for now, potentially drag region */}
+      <div className="flex-1 mx-4" />
 
       {/* Unlock Modal */}
       {isUnlockModalOpen && (
@@ -159,61 +133,75 @@ export function TitleBar() {
                 </div>
               </div>
 
+              {unlockError && (
+                <div className="mb-4 p-3 bg-accent-danger/10 border border-accent-danger/20 rounded-lg text-accent-danger text-sm">
+                  {unlockError}
+                </div>
+              )}
+
               <div className="space-y-4">
                 <div>
-                  <label className="input-label">Master Password</label>
+                  <label className="block text-xs font-medium text-dark-400 mb-1.5">
+                    Master Password
+                  </label>
                   <div className="relative">
                     <input
                       type={showUnlockPassword ? 'text' : 'password'}
                       value={unlockPassword}
                       onChange={(e) => setUnlockPassword(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
-                      className="input-base pr-12"
-                      placeholder="Enter your password"
+                      className="w-full pl-3 pr-10 py-2 bg-dark-800 border border-dark-700 rounded-lg text-dark-100 focus:outline-none focus:border-accent-primary transition-colors"
+                      placeholder="Enter password..."
                       autoFocus
                     />
                     <button
                       type="button"
                       onClick={() => setShowUnlockPassword(!showUnlockPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-dark-400 hover:text-dark-200"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
                     >
-                      {showUnlockPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      {showUnlockPassword ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                   </div>
-                  {unlockError && (
-                    <p className="text-sm text-red-400 mt-2">{unlockError}</p>
-                  )}
-                  <button
-                    onClick={() => {
-                      setIsUnlockModalOpen(false);
-                      openVaultResetModal();
-                    }}
-                    className="text-sm text-accent-primary hover:text-accent-primary/80 transition-colors mt-2 text-left"
-                  >
-                    Forgot Password?
-                  </button>
                 </div>
 
                 <div className="flex gap-3">
                   <button
                     onClick={() => {
                       setIsUnlockModalOpen(false);
-                      setUnlockPassword('');
                       setUnlockError(null);
-                      setShowUnlockPassword(false);
+                      setUnlockPassword('');
                     }}
-                    className="btn-secondary flex-1"
+                    className="flex-1 px-4 py-2 bg-dark-800 hover:bg-dark-700 text-dark-200 rounded-lg transition-colors text-sm font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleUnlock}
                     disabled={!unlockPassword}
-                    className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2 bg-accent-primary hover:bg-accent-primary/90 text-white rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Unlock
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-dark-800/50 rounded-b-2xl border-t border-dark-700">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-dark-400">Forgot password?</span>
+                <button
+                  onClick={() => {
+                    setIsUnlockModalOpen(false);
+                    openVaultResetModal();
+                  }}
+                  className="text-accent-primary hover:underline hover:text-accent-primary/80"
+                >
+                  Reset Vault
+                </button>
               </div>
             </div>
           </div>
@@ -221,13 +209,12 @@ export function TitleBar() {
       )}
 
       {/* Right: Browser Selector, Profile Selector & Settings */}
-      <div className="titlebar-no-drag flex items-center gap-2">
+      <div className="titlebar-no-drag flex items-center gap-3">
         {/* Favicon Fetching Indicator */}
         {isFetchingFavicons && (
-          <div className="flex items-center gap-2 px-2 py-1 rounded-lg bg-dark-800/50 border border-dark-700">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800/50 border border-dark-700">
             <Loader2 className="w-3.5 h-3.5 text-accent-primary animate-spin" />
-            <span className="text-xs text-dark-400">
-              <Image className="w-3 h-3 inline mr-1" />
+            <span className="text-xs text-dark-400 font-medium">
               {faviconProgress.current}/{faviconProgress.total}
             </span>
           </div>
@@ -237,95 +224,81 @@ export function TitleBar() {
         <button
           onClick={checkAllHealth}
           disabled={isCheckingHealth}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium
-                    transition-all duration-200 ${isCheckingHealth
-              ? 'bg-dark-800 text-dark-400 cursor-wait'
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200 group
+                    ${isCheckingHealth
+              ? 'bg-dark-800 border-dark-700 text-dark-400 cursor-wait'
               : totalChecked > 0
                 ? healthCounts.error > 0
-                  ? 'bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30'
+                  ? 'bg-accent-danger/10 border-accent-danger/20 text-accent-danger hover:bg-accent-danger/20'
                   : healthCounts.warning > 0
-                    ? 'bg-accent-warning/20 text-accent-warning hover:bg-accent-warning/30'
-                    : 'bg-accent-success/20 text-accent-success hover:bg-accent-success/30'
-                : 'bg-dark-800 text-dark-400 hover:bg-dark-700 hover:text-dark-200'
+                    ? 'bg-accent-warning/10 border-accent-warning/20 text-accent-warning hover:bg-accent-warning/20'
+                    : 'bg-accent-success/10 border-accent-success/20 text-accent-success hover:bg-accent-success/20'
+                : 'bg-dark-800 border-dark-700 text-dark-400 hover:bg-dark-700 hover:text-dark-200'
             }`}
-          title={
-            isCheckingHealth
-              ? 'Checking...'
-              : totalChecked > 0
-                ? `${healthCounts.healthy} healthy, ${healthCounts.warning} warnings, ${healthCounts.error} errors`
-                : 'Check bookmark health'
-          }
+          title="Check Health"
         >
           {isCheckingHealth ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
-            <Activity className="w-3.5 h-3.5" />
+            <Activity className="w-4 h-4" />
           )}
-          {totalChecked > 0 && !isCheckingHealth && (
-            <span>{healthCounts.healthy}/{totalChecked}</span>
-          )}
+          <span className="text-xs font-medium">
+            {isCheckingHealth ? 'Checking' : 'Health'}
+          </span>
         </button>
 
         {/* Tailscale Status */}
-        <div className="flex items-center gap-2 px-2">
-          <Wifi
-            className={`w-4 h-4 ${tailscaleStatus.connected ? 'text-accent-tailscale' : 'text-dark-500'
-              }`}
-          />
-          {tailscaleStatus.connected && tailscaleStatus.tailnetName && (
-            <span className="text-xs text-dark-400 hidden xl:block">
-              {tailscaleStatus.tailnetName}
-            </span>
-          )}
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700
+                        ${tailscaleStatus.connected ? 'text-accent-tailscale border-accent-tailscale/20 bg-accent-tailscale/5' : 'text-dark-400'}`}>
+          <Wifi className="w-4 h-4" />
+          <span className="text-xs font-medium">
+            {tailscaleStatus.connected ? 'Tailscale' : 'Offline'}
+          </span>
         </div>
 
         {/* Sync Status */}
         {settings?.syncEnabled && (
-          <div className="flex items-center gap-1.5 px-2" title={
-            isSyncing
-              ? 'Syncing...'
-              : syncError
-                ? `Sync error: ${syncError}`
-                : lastSyncTime
-                  ? `Last synced: ${new Date(lastSyncTime).toLocaleTimeString()}`
-                  : 'Sync enabled'
-          }>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors
+                          ${isSyncing ? 'bg-dark-800 border-accent-primary/30 text-accent-primary'
+              : syncError ? 'bg-accent-danger/10 border-accent-danger/20 text-accent-danger'
+                : 'bg-dark-800 border-dark-700 text-dark-400'}`}
+            title={lastSyncTime ? `Last synced: ${new Date(lastSyncTime).toLocaleTimeString()}` : 'Sync Status'}
+          >
             {isSyncing ? (
-              <Loader2 className="w-4 h-4 text-accent-primary animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : syncError ? (
-              <CloudOff className="w-4 h-4 text-accent-danger" />
+              <CloudOff className="w-4 h-4" />
             ) : lastSyncTime ? (
               <CheckCircle2 className="w-4 h-4 text-accent-success" />
             ) : (
-              <Cloud className="w-4 h-4 text-dark-500" />
+              <Cloud className="w-4 h-4" />
             )}
+            <span className="text-xs font-medium hidden xl:block">
+              {isSyncing ? 'Syncing' : syncError ? 'Error' : 'Sync'}
+            </span>
           </div>
         )}
+
+        <div className="w-px h-6 bg-dark-800 mx-1" />
 
         {/* Browser Selector */}
         {browsers.length > 0 && (
           <div className="relative">
             <button
               onClick={() => setIsBrowserDropdownOpen(!isBrowserDropdownOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700
-                       hover:bg-dark-700 hover:border-dark-600 transition-all duration-200"
-              title="Select Browser"
+              className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700
+                       hover:bg-dark-700 hover:border-dark-600 transition-all duration-200 group"
+              style={{ width: '180px' }} // Fixed width based on typical browser name length
             >
-              <span className="text-base">{activeBrowser?.icon || '🌐'}</span>
-              <span className="text-sm font-medium text-dark-200 hidden lg:block">
-                {activeBrowser?.name || 'Browser'}
-              </span>
-              <svg
-                className={`w-4 h-4 text-dark-400 transition-transform duration-200 ${isBrowserDropdownOpen ? 'rotate-180' : ''
-                  }`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              <div className="flex items-center gap-2 overflow-hidden">
+                <span className="w-4 h-4 flex items-center justify-center text-sm">{activeBrowser?.icon || '🌐'}</span>
+                <span className="text-xs font-medium text-dark-300 group-hover:text-dark-200 truncate">
+                  {activeBrowser?.name || 'Browser'}
+                </span>
+              </div>
+              <ChevronDown className={`w-3 h-3 text-dark-400 transition-transform duration-200 shrink-0 ${isBrowserDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
-
+            {/* Dropdown content (portal) remains same */}
             {isBrowserDropdownOpen && createPortal(
               <>
                 <div
@@ -336,15 +309,15 @@ export function TitleBar() {
                   className="fixed mt-1 w-52 py-2 bg-dark-800 border border-dark-700 rounded-lg shadow-xl z-[1001] animate-slide-down"
                   style={{
                     top: '44px',
-                    right: '110px'
+                    right: '320px' // Adjusted position
                   }}
                 >
+                  {/* Dropdown items... logic remains same but ensuring it works with new layout */}
                   <div className="px-3 py-1.5 text-xs font-medium text-dark-500 uppercase tracking-wider">
                     Open bookmarks in
                   </div>
                   {browsers.map((browser) => {
                     const isActive = selectedBrowser === browser.id;
-
                     return (
                       <button
                         key={browser.id}
@@ -353,22 +326,14 @@ export function TitleBar() {
                           setIsBrowserDropdownOpen(false);
                         }}
                         className={`w-full flex items-center gap-3 px-4 py-2 text-left
-                                  ${isActive ? 'bg-dark-700 text-dark-100' : 'text-dark-300 hover:bg-dark-700/50'}
-                                  transition-colors duration-150`}
+                                   ${isActive ? 'bg-dark-700 text-dark-100' : 'text-dark-300 hover:bg-dark-700/50'}
+                                   transition-colors duration-150`}
                       >
                         <span className="text-lg">{browser.icon}</span>
                         <span className="text-sm flex-1">{browser.name}</span>
                         {isActive && (
-                          <svg
-                            className="w-4 h-4 text-accent-primary"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
+                          <svg className="w-4 h-4 text-accent-primary" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                           </svg>
                         )}
                       </button>
@@ -385,22 +350,18 @@ export function TitleBar() {
         <div className="relative">
           <button
             onClick={() => setIsProfileDropdownOpen(!isProfileDropdownOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700
-                     hover:bg-dark-700 hover:border-dark-600 transition-all duration-200"
+            className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700
+                     hover:bg-dark-700 hover:border-dark-600 transition-all duration-200 group"
+            style={{ width: '180px' }}
           >
-            <ActiveIcon className={`w-4 h-4 ${activeProfileData.color}`} />
-            <span className="text-sm font-medium text-dark-200">{activeProfileData.label}</span>
-            <svg
-              className={`w-4 h-4 text-dark-400 transition-transform duration-200 ${isProfileDropdownOpen ? 'rotate-180' : ''
-                }`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <div className="flex items-center gap-2 overflow-hidden">
+              <ActiveIcon className={`w-4 h-4 shrink-0 ${activeProfileData.color}`} />
+              <span className="text-xs font-medium text-dark-300 group-hover:text-dark-200 truncate">
+                {activeProfileData.label}
+              </span>
+            </div>
+            <ChevronDown className={`w-3 h-3 text-dark-400 transition-transform duration-200 shrink-0 ${isProfileDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
-
           {isProfileDropdownOpen && createPortal(
             <>
               <div
@@ -411,9 +372,10 @@ export function TitleBar() {
                 className="fixed mt-1 w-48 py-2 bg-dark-800 border border-dark-700 rounded-lg shadow-xl z-[1001] animate-slide-down"
                 style={{
                   top: '44px',
-                  right: '10px'
+                  right: '200px' // Adjusted position
                 }}
               >
+                {/* Dropdown items... */}
                 <div className="px-3 py-1.5 text-xs font-medium text-dark-500 uppercase tracking-wider">
                   Network Profile
                 </div>
@@ -440,16 +402,8 @@ export function TitleBar() {
                       <Icon className={`w-4 h-4 ${profile.color}`} />
                       <span className="text-sm">{profile.label}</span>
                       {isActive && (
-                        <svg
-                          className="w-4 h-4 ml-auto text-accent-primary"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
+                        <svg className="w-4 h-4 ml-auto text-accent-primary" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                         </svg>
                       )}
                       {profile.id === 'tailscale' && !tailscaleStatus.connected && (
@@ -464,48 +418,59 @@ export function TitleBar() {
           )}
         </div>
 
-        {/* Selection Mode Toggle */}
-        <button
-          onClick={toggleSelectionMode}
-          className={`p-2 rounded-lg transition-all duration-200 ${isSelectionMode
-            ? 'bg-accent-primary/20 text-accent-primary hover:bg-accent-primary/30'
-            : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'
-            }`}
-          title={isSelectionMode ? 'Exit Selection Mode' : 'Select Items'}
-        >
-          <CheckSquare className="w-5 h-5" />
-        </button>
+        <div className="w-px h-6 bg-dark-800 mx-1" />
 
-        {/* Lock/Unlock Vault Button */}
-        {isVaultSetup && (
+        {/* Action Buttons Group */}
+        <div className="flex items-center gap-2">
+          {/* Selection Mode Toggle */}
           <button
-            onClick={handleLockToggle}
-            className="p-2 rounded-lg text-dark-400 hover:text-accent-warning hover:bg-dark-800 
-                     transition-all duration-200"
-            title={isVaultLocked ? 'Unlock Vault' : 'Lock Vault'}
+            onClick={toggleSelectionMode}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-200 group
+                ${isSelectionMode
+                ? 'bg-accent-primary/10 border-accent-primary/20 text-accent-primary'
+                : 'bg-dark-800 border-dark-700 text-dark-400 hover:bg-dark-700 hover:text-dark-200'
+              }`}
+            title={isSelectionMode ? 'Exit Selection Mode' : 'Select Items'}
           >
-            {isVaultLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+            <CheckSquare className="w-4 h-4" />
+            <span className="text-xs font-medium">Select</span>
           </button>
-        )}
 
-        {/* Command Palette */}
-        <button
-          onClick={openCommandPalette}
-          className="p-2 rounded-lg text-dark-400 hover:text-dark-200 hover:bg-dark-800 
-                   transition-all duration-200"
-          title="Command Palette (Cmd+K)"
-        >
-          <Command className="w-5 h-5" />
-        </button>
+          {/* Lock/Unlock Vault Button */}
+          {isVaultSetup && (
+            <button
+              onClick={handleLockToggle}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-dark-700 bg-dark-800 transition-all duration-200 group
+                          ${isVaultLocked ? 'text-dark-400 hover:text-accent-warning' : 'text-dark-400 hover:text-dark-200'}`}
+              title={isVaultLocked ? 'Unlock Vault' : 'Lock Vault'}
+            >
+              {isVaultLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+              <span className="text-xs font-medium">{isVaultLocked ? 'Locked' : 'Unlock'}</span>
+            </button>
+          )}
 
-        {/* Settings */}
-        <button
-          onClick={openSettings}
-          className="p-2 rounded-lg text-dark-400 hover:text-dark-200 hover:bg-dark-800 
-                   transition-all duration-200"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
+          {/* Command Palette */}
+          <button
+            onClick={openCommandPalette}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700 text-dark-400 
+                       hover:bg-dark-700 hover:text-dark-200 transition-all duration-200 group"
+            title="Command Palette"
+          >
+            <Command className="w-4 h-4" />
+            <span className="text-xs font-medium">Cmds</span>
+          </button>
+
+          {/* Settings */}
+          <button
+            onClick={openSettings}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-dark-700 text-dark-400 
+                       hover:bg-dark-700 hover:text-dark-200 transition-all duration-200 group"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="text-xs font-medium">Settings</span>
+          </button>
+        </div>
       </div>
     </header>
   );

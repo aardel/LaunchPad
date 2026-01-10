@@ -138,7 +138,7 @@ interface AppState {
   clearSelection: () => void;
   batchDeleteItems: (itemIds: string[]) => Promise<void>;
   batchChangeGroup: (itemIds: string[], groupId: string) => Promise<void>;
-  batchReplaceAddress: (itemIds: string[], searchText: string, replacementText: string, profile: string) => Promise<void>;
+  batchReplaceAddress: (itemIds: string[], searchText: string, replacementText: string, profile: string, useRegex?: boolean) => Promise<void>;
 
   // Modal actions
   openAddModal: () => void;
@@ -809,10 +809,10 @@ export const useStore = create<AppState>((set, get) => ({
     await get().loadData();
   },
 
-  batchReplaceAddress: async (itemIds: string[], searchText: string, replacementText: string, profile: string) => {
+  batchReplaceAddress: async (itemIds: string[], searchText: string, replacementText: string, profile: string, useRegex: boolean = false) => {
     if (itemIds.length === 0) return;
     try {
-      const res = await window.api.items.bulkReplaceAddress(itemIds, searchText, replacementText, profile);
+      const res = await window.api.items.bulkReplaceAddress(itemIds, searchText, replacementText, profile, useRegex);
       if (res.success) {
         get().clearSelection();
         await get().loadData();

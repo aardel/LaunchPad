@@ -3,7 +3,7 @@ import {
   X, RefreshCw, Download, Upload, FileUp, Check, Globe,
   Settings, Wifi, Database, Info, Terminal, Palette, Image, Loader2, Shield,
   Lock, Eye, EyeOff, AlertCircle, Keyboard, Command, Cloud, CloudOff, CheckCircle2,
-  Sparkles, Key
+  Sparkles, Key, Archive, Folder, FolderOpen
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { ImportBrowserModal } from './ImportBrowserModal';
@@ -138,22 +138,22 @@ export function SettingsModal() {
     if (updates.keyboardShortcuts) {
       const currentShortcuts = (settings?.keyboardShortcuts || {}) as any;
       updates.keyboardShortcuts = {
-        newItem: updates.keyboardShortcuts.newItem ?? currentShortcuts.newItem ?? 'Meta+N',
-        newGroup: updates.keyboardShortcuts.newGroup ?? currentShortcuts.newGroup ?? 'Meta+G',
-        openSettings: updates.keyboardShortcuts.openSettings ?? currentShortcuts.openSettings ?? 'Meta+,',
-        focusSearch: updates.keyboardShortcuts.focusSearch ?? currentShortcuts.focusSearch ?? 'Meta+F',
-        lockVault: updates.keyboardShortcuts.lockVault ?? currentShortcuts.lockVault ?? 'Meta+L',
-        commandPalette: updates.keyboardShortcuts.commandPalette ?? currentShortcuts.commandPalette ?? 'Meta+K',
-        selectGroup1: updates.keyboardShortcuts.selectGroup1 ?? currentShortcuts.selectGroup1 ?? '1',
-        selectGroup2: updates.keyboardShortcuts.selectGroup2 ?? currentShortcuts.selectGroup2 ?? '2',
-        selectGroup3: updates.keyboardShortcuts.selectGroup3 ?? currentShortcuts.selectGroup3 ?? '3',
-        selectGroup4: updates.keyboardShortcuts.selectGroup4 ?? currentShortcuts.selectGroup4 ?? '4',
-        selectGroup5: updates.keyboardShortcuts.selectGroup5 ?? currentShortcuts.selectGroup5 ?? '5',
-        selectGroup6: updates.keyboardShortcuts.selectGroup6 ?? currentShortcuts.selectGroup6 ?? '6',
-        selectGroup7: updates.keyboardShortcuts.selectGroup7 ?? currentShortcuts.selectGroup7 ?? '7',
-        selectGroup8: updates.keyboardShortcuts.selectGroup8 ?? currentShortcuts.selectGroup8 ?? '8',
-        selectGroup9: updates.keyboardShortcuts.selectGroup9 ?? currentShortcuts.selectGroup9 ?? '9',
-        showAllGroups: updates.keyboardShortcuts.showAllGroups ?? currentShortcuts.showAllGroups ?? '0',
+        newItem: updates.keyboardShortcuts?.newItem ?? currentShortcuts.newItem ?? 'Meta+N',
+        newGroup: updates.keyboardShortcuts?.newGroup ?? currentShortcuts.newGroup ?? 'Meta+G',
+        openSettings: updates.keyboardShortcuts?.openSettings ?? currentShortcuts.openSettings ?? 'Meta+,',
+        focusSearch: updates.keyboardShortcuts?.focusSearch ?? currentShortcuts.focusSearch ?? 'Meta+F',
+        lockVault: updates.keyboardShortcuts?.lockVault ?? currentShortcuts.lockVault ?? 'Meta+L',
+        commandPalette: updates.keyboardShortcuts?.commandPalette ?? currentShortcuts.commandPalette ?? 'Meta+K',
+        selectGroup1: updates.keyboardShortcuts?.selectGroup1 ?? currentShortcuts.selectGroup1 ?? '1',
+        selectGroup2: updates.keyboardShortcuts?.selectGroup2 ?? currentShortcuts.selectGroup2 ?? '2',
+        selectGroup3: updates.keyboardShortcuts?.selectGroup3 ?? currentShortcuts.selectGroup3 ?? '3',
+        selectGroup4: updates.keyboardShortcuts?.selectGroup4 ?? currentShortcuts.selectGroup4 ?? '4',
+        selectGroup5: updates.keyboardShortcuts?.selectGroup5 ?? currentShortcuts.selectGroup5 ?? '5',
+        selectGroup6: updates.keyboardShortcuts?.selectGroup6 ?? currentShortcuts.selectGroup6 ?? '6',
+        selectGroup7: updates.keyboardShortcuts?.selectGroup7 ?? currentShortcuts.selectGroup7 ?? '7',
+        selectGroup8: updates.keyboardShortcuts?.selectGroup8 ?? currentShortcuts.selectGroup8 ?? '8',
+        selectGroup9: updates.keyboardShortcuts?.selectGroup9 ?? currentShortcuts.selectGroup9 ?? '9',
+        showAllGroups: updates.keyboardShortcuts?.showAllGroups ?? currentShortcuts.showAllGroups ?? '0',
       };
     }
     const res = await window.api.settings.update(updates);
@@ -209,6 +209,12 @@ export function SettingsModal() {
   const [isTestingAiConnection, setIsTestingAiConnection] = useState(false);
   const [aiConnectionStatus, setAiConnectionStatus] = useState<string | null>(null);
 
+  // Backup state
+  const [backupEnabled, setBackupEnabled] = useState(true);
+  const [backupFrequency, setBackupFrequency] = useState<'daily' | 'weekly' | 'manual'>('daily');
+  const [backupRetention, setBackupRetention] = useState(30);
+  const [backupPath, setBackupPath] = useState('');
+
   // Hotkey state
   const [globalSearchHotkey, setGlobalSearchHotkey] = useState('Option+Space');
 
@@ -226,7 +232,13 @@ export function SettingsModal() {
       setAiEnabled(settings.aiEnabled || false);
       setGroqApiKey(settings.groqApiKey || '');
       setShowApiKey(false);
+      setGroqApiKey(settings.groqApiKey || '');
+      setShowApiKey(false);
       setGlobalSearchHotkey(settings.globalSearchHotkey || (isMac ? 'Option+Space' : 'Alt+Space'));
+      setBackupEnabled(settings.backupEnabled !== false); // Default to true if undefined
+      setBackupFrequency(settings.backupFrequency || 'daily');
+      setBackupRetention(settings.backupRetentionCount || 30);
+      setBackupPath(settings.backupPath || '');
     }
     if (groups.length > 0 && !selectedImportGroup) {
       setSelectedImportGroup(groups[0].id);
@@ -431,6 +443,29 @@ export function SettingsModal() {
       }
     } catch (error) {
       setImportStatus('Import failed');
+    }
+  };
+
+  const handleChangeBackupLocation = async () => {
+    try {
+      const result = await window.api.dialog.openDirectory();
+      if (!result.canceled && result.filePaths.length > 0) {
+        const newPath = result.filePaths[0];
+        setBackupPath(newPath);
+        updateSettings({ backupPath: newPath });
+      }
+    } catch (error) {
+      console.error('Failed to change backup location:', error);
+    }
+  };
+
+  const handleOpenBackupFolder = async () => {
+    try {
+      if (backupPath) {
+        await window.api.shell.openPath(backupPath);
+      }
+    } catch (error) {
+      console.error('Failed to open backup folder:', error);
     }
   };
 
@@ -909,6 +944,108 @@ export function SettingsModal() {
             {/* Data Tab */}
             {activeTab === 'data' && (
               <div className="space-y-6">
+                {/* Backup & Recovery */}
+                <div>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">Backup & Recovery</h3>
+                  <div className="p-4 bg-dark-800/50 rounded-xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Archive className="w-5 h-5 text-dark-400" />
+                        <div>
+                          <p className="text-sm font-medium text-dark-200">Auto Backup</p>
+                          <p className="text-xs text-dark-500">Automatically back up your data locally</p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={backupEnabled}
+                          onChange={(e) => {
+                            setBackupEnabled(e.target.checked);
+                            updateSettings({ backupEnabled: e.target.checked });
+                          }}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-primary"></div>
+                      </label>
+                    </div>
+
+                    {backupEnabled && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dark-700/50">
+                          <div>
+                            <label className="input-label text-xs">Frequency</label>
+                            <select
+                              value={backupFrequency}
+                              onChange={(e) => {
+                                const val = e.target.value as 'daily' | 'weekly' | 'manual';
+                                setBackupFrequency(val);
+                                updateSettings({ backupFrequency: val });
+                              }}
+                              className="input-base text-sm"
+                            >
+                              <option value="daily">Daily</option>
+                              <option value="weekly">Weekly</option>
+                              <option value="manual">Manual Only</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="input-label text-xs">Retention (Backups to keep)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={backupRetention}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 30;
+                                setBackupRetention(val);
+                                updateSettings({ backupRetentionCount: val });
+                              }}
+                              className="input-base text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Backup Location */}
+                        <div className="pt-2 border-t border-dark-700/50">
+                          <label className="input-label text-xs">Backup Location</label>
+                          <div className="flex gap-2">
+                            <div className="flex-1 input-base text-sm text-dark-400 truncate flex items-center">
+                              {backupPath || 'Default (Application Data)'}
+                            </div>
+                            <button
+                              onClick={handleChangeBackupLocation}
+                              className="btn-secondary whitespace-nowrap"
+                              title="Change backup folder"
+                            >
+                              <Folder className="w-4 h-4 mr-2" />
+                              Change
+                            </button>
+                            {backupPath && (
+                              <button
+                                onClick={handleOpenBackupFolder}
+                                className="btn-secondary whitespace-nowrap"
+                                title="Open backup folder"
+                              >
+                                <FolderOpen className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-xs text-dark-500 mt-1">
+                            Where your backups are stored. Ensure you have write permissions.
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {settings?.lastAutoBackup && (
+                      <p className="text-xs text-dark-500 pt-1">
+                        Last auto-backup: {new Date(settings.lastAutoBackup).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 {/* Status Messages */}
                 {(exportStatus || importStatus || syncStatus) && (
                   <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${(exportStatus?.includes('failed') || importStatus?.includes('failed') || syncStatus?.includes('failed') || syncStatus?.includes('Error'))

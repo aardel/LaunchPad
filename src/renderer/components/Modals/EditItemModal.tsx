@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { X, FolderOpen, Eye, EyeOff, Key } from 'lucide-react';
+import { X, FolderOpen, Eye, EyeOff, Key, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import type { Protocol, UpdateItemInput, BookmarkItem, SSHItem, AppItem, PasswordItem } from '@shared/types';
 
-const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'custom'];
+const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'custom'];
 
 export function EditItemModal() {
   const {
@@ -52,6 +52,14 @@ export function EditItemModal() {
   const [passwordUrl, setPasswordUrl] = useState('');
   const [passwordNotes, setPasswordNotes] = useState('');
 
+  // Tags
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagsInput, setTagsInput] = useState('');
+
+  // AI state
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
   // Populate form when editing item changes
   useEffect(() => {
     if (editingItem) {
@@ -60,6 +68,8 @@ export function EditItemModal() {
       setGroupId(editingItem.groupId);
       setIcon(editingItem.icon || '');
       setColor(editingItem.color || '#6366f1');
+      setTags(editingItem.tags || []);
+      setTagsInput(editingItem.tags?.join(', ') || '');
 
       if (editingItem.type === 'bookmark') {
         const bookmark = editingItem as BookmarkItem;
@@ -215,6 +225,7 @@ export function EditItemModal() {
         id: editingItem.id,
         name: name.trim(),
         description: description.trim() || undefined,
+        tags: tags.length > 0 ? tags : undefined,
         groupId,
         icon: icon || undefined,
         color,
@@ -358,6 +369,12 @@ export function EditItemModal() {
         {/* Content */}
         <div className="p-6 overflow-y-auto">
           <form onSubmit={handleSubmit} className="space-y-4">
+            {aiError && (
+              <div className="flex items-center gap-2 p-3 text-sm text-accent-danger bg-accent-danger/10 border border-accent-danger/20 rounded-lg animate-fade-in">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {aiError}
+              </div>
+            )}
             {/* Common fields */}
             <div>
               <label className="input-label">Name *</label>
@@ -373,7 +390,56 @@ export function EditItemModal() {
             </div>
 
             <div>
-              <label className="input-label">Group *</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="input-label">Group *</label>
+                {settings?.aiEnabled && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsAiGenerating(true);
+                      setAiError(null);
+                      try {
+                        let url: string | undefined;
+                        if (editingItem.type === 'bookmark') {
+                          url = `${protocol}://${localAddress}${port ? `:${port}` : ''}${path || ''}`;
+                        } else if (editingItem.type === 'password' && passwordUrl) {
+                          url = passwordUrl;
+                        }
+
+                        const res = await window.api.ai.categorizeItem(name, url, description);
+                        if (res.success && res.data) {
+                          // Find matching group
+                          const suggestedGroup = groups.find(g =>
+                            g.name.toLowerCase().includes(res.data!.toLowerCase()) ||
+                            res.data!.toLowerCase().includes(g.name.toLowerCase())
+                          );
+                          if (suggestedGroup) {
+                            setGroupId(suggestedGroup.id);
+                          }
+                        }
+                      } catch (error) {
+                        setAiError('Failed to get AI suggestion');
+                      } finally {
+                        setIsAiGenerating(false);
+                      }
+                    }}
+                    disabled={!name.trim() || isAiGenerating}
+                    className="text-xs text-accent-primary hover:text-accent-secondary flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isAiGenerating ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        AI...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3" />
+                        AI Suggest
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <FolderOpen className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
                 <select
@@ -442,7 +508,7 @@ export function EditItemModal() {
                   </p>
                 </div>
 
-                {settings.advancedMode && (
+                {settings?.advancedMode && (
                   <div className="p-4 bg-dark-800/50 rounded-lg space-y-3">
                     <div>
                       <h4 className="text-sm font-medium text-dark-300 mb-1">Network Addresses</h4>
@@ -487,7 +553,7 @@ export function EditItemModal() {
                   </div>
                 )}
 
-                {!settings.advancedMode && (
+                {!settings?.advancedMode && (
                   <div>
                     <label className="input-label">Address / URL *</label>
                     <input
@@ -609,7 +675,7 @@ export function EditItemModal() {
                   </div>
                 </div>
 
-                {settings.advancedMode ? (
+                {settings?.advancedMode ? (
                   <div className="p-4 bg-dark-800/50 rounded-lg space-y-3">
                     <h4 className="text-sm font-medium text-dark-300">Host Addresses</h4>
                     <div>
@@ -879,9 +945,114 @@ export function EditItemModal() {
               </>
             )}
 
+            {/* Tags */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="input-label">Tags</label>
+                {settings?.aiEnabled && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsAiGenerating(true);
+                      setAiError(null);
+                      try {
+                        let url: string | undefined;
+                        if (editingItem.type === 'bookmark') {
+                          url = `${protocol}://${localAddress}${port ? `:${port}` : ''}${path || ''}`;
+                        } else if (editingItem.type === 'password' && passwordUrl) {
+                          url = passwordUrl;
+                        }
+
+                        const res = await window.api.ai.suggestTags(name, url, description);
+                        if (res.success && res.data && res.data.length > 0) {
+                          setTags(res.data);
+                          setTagsInput(res.data.join(', '));
+                        }
+                      } catch (error) {
+                        setAiError('Failed to suggest tags');
+                      } finally {
+                        setIsAiGenerating(false);
+                      }
+                    }}
+                    disabled={!name.trim() || isAiGenerating}
+                    className="text-xs text-accent-primary hover:text-accent-secondary flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isAiGenerating ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        AI...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3" />
+                        AI Suggest
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={tagsInput}
+                onChange={(e) => {
+                  setTagsInput(e.target.value);
+                  // Parse tags (comma-separated)
+                  const newTags = e.target.value
+                    .split(',')
+                    .map(tag => tag.trim().toLowerCase())
+                    .filter(tag => tag.length > 0);
+                  setTags(newTags);
+                }}
+                placeholder="development, tools, productivity (comma-separated)"
+                className="input-base"
+              />
+            </div>
+
             {/* Description */}
             <div>
-              <label className="input-label">Description</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="input-label">Description</label>
+                {settings?.aiEnabled && (editingItem.type === 'bookmark' || editingItem.type === 'password') && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsAiGenerating(true);
+                      setAiError(null);
+                      try {
+                        let url: string | undefined;
+                        if (editingItem.type === 'bookmark') {
+                          url = `${protocol}://${localAddress}${port ? `:${port}` : ''}${path || ''}`;
+                        } else if (editingItem.type === 'password' && passwordUrl) {
+                          url = passwordUrl;
+                        }
+
+                        const res = await window.api.ai.generateDescription(name, url);
+                        if (res.success && res.data) {
+                          setDescription(res.data);
+                        }
+                      } catch (error) {
+                        setAiError('Failed to generate description');
+                      } finally {
+                        setIsAiGenerating(false);
+                      }
+                    }}
+                    disabled={!name.trim() || isAiGenerating}
+                    className="text-xs text-accent-primary hover:text-accent-secondary flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {isAiGenerating ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        AI...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3" />
+                        AI Generate
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}

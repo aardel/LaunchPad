@@ -35,6 +35,18 @@ export class HealthCheckService {
       return result;
     }
 
+    // Skip health check for internal browser protocols and non-network schemes
+    const protocol = item.protocol || 'https';
+    const excludedProtocols = ['chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'mailto', 'app'];
+
+    if (excludedProtocols.includes(protocol) || url.startsWith('file://')) {
+      result.status = 'healthy';
+      result.responseTime = 0;
+      this.results.set(item.id, result);
+      this.recordMetric(item.id, result);
+      return result;
+    }
+
     try {
       const response = await this.fetchWithTimeout(url, this.checkTimeout);
       result.responseTime = Date.now() - startTime;

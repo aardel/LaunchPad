@@ -127,6 +127,23 @@ function App() {
     }
   }, [refreshDashboardMetrics]);
 
+  // Listen for toast notifications from main process
+  useEffect(() => {
+    const handleToast = (_event: any, data: { message: string, type?: 'info' | 'success' | 'warning' | 'error', title?: string }) => {
+      // Combine title and message if both exist
+      const displayMessage = data.title ? `${data.title} - ${data.message}` : data.message;
+      useStore.getState().showNotification(displayMessage, data.type);
+    };
+
+    // @ts-ignore
+    if (window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.on('toast:show', handleToast);
+      return () => {
+        window.electron.ipcRenderer.removeListener('toast:show', handleToast);
+      };
+    }
+  }, []);
+
   // Fetch missing favicons when items first load (deferred to not block UI)
   useEffect(() => {
     if (items.length > 0) {

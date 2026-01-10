@@ -1,6 +1,6 @@
 // Item Types
 export type ItemType = 'bookmark' | 'ssh' | 'app' | 'password';
-export type Protocol = 'http' | 'https' | 'ssh' | 'rdp' | 'vnc' | 'ftp' | 'custom';
+export type Protocol = 'http' | 'https' | 'ssh' | 'rdp' | 'vnc' | 'ftp' | 'chrome' | 'edge' | 'brave' | 'opera' | 'chatgpt' | 'about' | 'mailto' | 'custom';
 export type NetworkProfile = 'local' | 'tailscale' | 'vpn' | 'custom';
 
 // Core Item Interface
@@ -152,6 +152,13 @@ export interface AppSettings {
   // Encryption
   encryptionSalt?: string;
   encryptionVerification?: string;
+
+  // Auto Backup
+  backupEnabled: boolean;
+  backupFrequency: 'daily' | 'weekly' | 'manual';
+  backupRetentionCount: number;
+  lastAutoBackup?: string; // ISO timestamp
+  backupPath?: string; // Custom backup location
 }
 
 // Tailscale Status

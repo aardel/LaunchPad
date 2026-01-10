@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { app } from 'electron';
-import type { AnyItem, Group } from '../../shared/types';
+import type { AnyItem, Group, AppSettings } from '../../shared/types';
 
 export interface BackupData {
   version: string;
@@ -17,8 +17,17 @@ export class BackupService {
   constructor() {
     const userDataPath = app.getPath('userData');
     this.backupsDir = join(userDataPath, 'backups');
-    
+
     // Ensure backups directory exists
+    this.ensureBackupDir();
+  }
+
+  setBackupsDirectory(path: string): void {
+    this.backupsDir = path;
+    this.ensureBackupDir();
+  }
+
+  private ensureBackupDir(): void {
     if (!existsSync(this.backupsDir)) {
       mkdirSync(this.backupsDir, { recursive: true });
     }
@@ -27,11 +36,14 @@ export class BackupService {
   /**
    * Create an automatic backup before a major operation
    */
-  async createBackup(groups: Group[], items: AnyItem[]): Promise<{ success: boolean; path?: string; error?: string }> {
+  /**
+   * Create an automatic backup before a major operation
+   */
+  async createBackup(groups: Group[], items: AnyItem[], retentionCount: number = 10): Promise<{ success: boolean; path?: string; error?: string }> {
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backupPath = join(this.backupsDir, `backup-${timestamp}.json`);
-      
+
       const backupData: BackupData = {
         version: '1.0.0',
         timestamp: new Date().toISOString(),
@@ -40,10 +52,10 @@ export class BackupService {
       };
 
       writeFileSync(backupPath, JSON.stringify(backupData, null, 2), 'utf-8');
-      
-      // Clean up old backups (keep only last maxBackups)
-      this.cleanupOldBackups();
-      
+
+      // Clean up old backups (keep only last retentionCount)
+      this.cleanupOldBackups(retentionCount);
+
       return { success: true, path: backupPath };
     } catch (error) {
       console.error('Failed to create backup:', error);
@@ -62,7 +74,7 @@ export class BackupService {
       // Sort by filename (which includes timestamp) descending
       backups.sort().reverse();
       const latestBackupPath = join(this.backupsDir, backups[0]);
-      
+
       const content = readFileSync(latestBackupPath, 'utf-8');
       return JSON.parse(content) as BackupData;
     } catch (error) {
@@ -119,26 +131,26 @@ export class BackupService {
     if (!existsSync(this.backupsDir)) {
       return [];
     }
-    
+
     return readdirSync(this.backupsDir)
       .filter(file => file.startsWith('backup-') && file.endsWith('.json'));
   }
 
   /**
-   * Clean up old backups, keeping only the most recent maxBackups
+   * Clean up old backups, keeping only the most recent count
    */
-  private cleanupOldBackups(): void {
+  private cleanupOldBackups(keepCount: number = this.maxBackups): void {
     try {
       const backups = this.getBackupFiles();
-      
-      if (backups.length <= this.maxBackups) {
+
+      if (backups.length <= keepCount) {
         return;
       }
 
       // Sort by filename (timestamp) and remove oldest
       backups.sort().reverse();
-      const backupsToDelete = backups.slice(this.maxBackups);
-      
+      const backupsToDelete = backups.slice(keepCount);
+
       for (const backup of backupsToDelete) {
         const backupPath = join(this.backupsDir, backup);
         try {
@@ -157,6 +169,32 @@ export class BackupService {
    */
   getBackupsDirectory(): string {
     return this.backupsDir;
+  }
+
+  /**
+   * Check if auto backup should run based on settings
+   */
+  shouldRunAutoBackup(settings: AppSettings): boolean {
+    if (!settings.backupEnabled || settings.backupFrequency === 'manual') {
+      return false;
+    }
+
+    if (!settings.lastAutoBackup) {
+      return true;
+    }
+
+    const lastBackup = new Date(settings.lastAutoBackup);
+    const now = new Date();
+    const diffMs = now.getTime() - lastBackup.getTime();
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    if (settings.backupFrequency === 'daily') {
+      return diffDays >= 1;
+    } else if (settings.backupFrequency === 'weekly') {
+      return diffDays >= 7;
+    }
+
+    return false;
   }
 }
 

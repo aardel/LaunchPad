@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, nativeTheme, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, nativeTheme, globalShortcut, dialog } from 'electron';
 import path from 'path';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
@@ -16,6 +16,7 @@ import { SyncService } from './services/sync';
 import { ExtensionServer } from './services/extensionServer';
 import { AIService } from './services/aiService';
 import { BackupService } from './services/backupService';
+import { TrayService } from './services/tray';
 import {
   AnyItem,
   Group,
@@ -43,6 +44,7 @@ let syncService: SyncService;
 let extensionServer: ExtensionServer;
 let aiService: AIService;
 let backupService: BackupService | null = null;
+let trayService: TrayService | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -132,6 +134,14 @@ async function initializeServices() {
 
   extensionServer = new ExtensionServer(db, aiService);
   backupService = new BackupService();
+  if (settings.backupPath) {
+    backupService.setBackupsDirectory(settings.backupPath);
+  }
+
+  trayService = new TrayService(launcher, () => mainWindow);
+
+  // Initial tray update
+  trayService.updateMenu(db.getAllGroups(), db.getAllItems());
 
   // Set callback for when bookmarks are added via extension
   extensionServer.setOnBookmarkAdded((item) => {
@@ -146,6 +156,41 @@ async function initializeServices() {
 
   // Pre-cache browser list
   await browserService.getInstalledBrowsers();
+
+  // Initialize Auto Backup Scheduler
+  const runAutoBackupCheck = async () => {
+    try {
+      if (!backupService || !db) return;
+
+      const settings = db.getSettings();
+      if (backupService.shouldRunAutoBackup(settings)) {
+        console.log('Running auto backup...');
+        const groups = db.getAllGroups();
+        const items = db.getAllItems();
+
+        const result = await backupService.createBackup(groups, items, settings.backupRetentionCount);
+
+        if (result.success) {
+          console.log('Auto backup created successfully');
+          db.updateSettings({ lastAutoBackup: new Date().toISOString() });
+
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('backup:created', { timestamp: new Date().toISOString() });
+          }
+        } else {
+          console.error('Auto backup failed:', result.error);
+        }
+      }
+    } catch (error) {
+      console.error('Error running auto backup check:', error);
+    }
+  };
+
+  // Run immediately on startup (after a slight delay to let things settle)
+  setTimeout(runAutoBackupCheck, 10000);
+
+  // Run every hour
+  setInterval(runAutoBackupCheck, 60 * 60 * 1000);
 }
 
 function setupIPC() {
@@ -160,6 +205,11 @@ function setupIPC() {
     // Debounce: wait 2 seconds after last change before syncing
     syncTimeout = setTimeout(() => {
       try {
+        // Update tray
+        if (trayService && db) {
+          trayService.updateMenu(db.getAllGroups(), db.getAllItems());
+        }
+
         const settings = getDb().getSettings();
         if (settings.syncEnabled && encryption?.isUnlocked()) {
           // Notify renderer that sync is starting
@@ -321,7 +371,7 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('items:bulkReplaceAddress', async (_, ids: string[], searchText: string, replacementText: string, profile: string): Promise<IPCResponse<void>> => {
+  ipcMain.handle('items:bulkReplaceAddress', async (_, ids: string[], searchText: string, replacementText: string, profile: string, useRegex: boolean): Promise<IPCResponse<void>> => {
     try {
       // Create backup before bulk update
       if (backupService) {
@@ -330,7 +380,7 @@ function setupIPC() {
         await backupService.createBackup(groups, items);
       }
 
-      getDb().bulkReplaceAddress(ids, searchText, replacementText, profile);
+      getDb().bulkReplaceAddress(ids, searchText, replacementText, profile, useRegex);
       triggerSync();
 
       // Notify renderer
@@ -503,6 +553,21 @@ function setupIPC() {
     }
   });
 
+  // Dialog
+  ipcMain.handle('dialog:openDirectory', async () => {
+    if (!mainWindow) return { canceled: true };
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory', 'createDirectory']
+    });
+    return result;
+  });
+
+  // Shell
+  ipcMain.handle('shell:openPath', async (_, path: string) => {
+    return shell.openPath(path);
+  });
+
+  // AI
   ipcMain.handle('ai:categorizeItem', async (_, name: string, url?: string, description?: string): Promise<IPCResponse<string | null>> => {
     try {
       const category = await aiService.categorizeItem(name, url, description);

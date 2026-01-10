@@ -39,12 +39,19 @@ Switch between different network contexts seamlessly:
 - **Browser Extensions** - Quick-add bookmarks from Chrome, Firefox, Edge, Brave, Arc, and Safari
 - **Browser Bookmark Import** - Import bookmarks from Chrome, Firefox, Safari, and more
 - **Local Extension Server** - Built-in HTTP server for browser extension communication
+- **Browser-Specific Launching** - Force `chrome://`, `edge://`, `brave://`, `opera://` URLs to open in their respective browsers
+- **Native Browser Support** - Added support for Opera and ChatGPT desktop app URLs
+
+### 🖥️ Desktop Integration
+- **Menu Bar Tray** - "LaunchIt" tray icon (🔖) for quick access to groups and bookmarks without opening the main window
+- **Global Shortcuts** - Launch items and toggle visibility with keyboard shortcuts
 
 ### 🔄 Sync & Backup
 - **WebDAV/Nextcloud Sync** - Sync your data across devices
 - **Import/Export** - Backup and restore your data
 - **Encrypted Sync** - End-to-end encrypted synchronization
-- **Automatic Backups** - Auto-backup before major changes (keeps last 10 backups)
+- **Automatic Backups** - Hourly auto-backups with custom retention policy
+- **Custom Backup Location** - specificy where backups are stored
 - **One-Click Undo** - Restore from most recent backup with undo button
 
 ### 🎨 Modern Dashboard UI

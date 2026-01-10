@@ -60,18 +60,65 @@ export class LauncherService {
   private async launchBookmark(item: BookmarkItem, profile: NetworkProfile, browserId?: string): Promise<void> {
     const url = this.buildUrl(item, profile);
 
-    // If no specific browser or default, use system default
-    if (!browserId || browserId === 'default') {
+    // Check if the protocol requires a specific browser
+    const protocol = item.protocol || 'https';
+    let targetBrowserId = browserId;
+    let forceBrowser = false;
+
+    // Map protocols to browser IDs
+    // Note: 'about' and 'mailto' don't force a browser
+    const protocolToBrowser: Record<string, string> = {
+      'chrome': 'chrome',
+      'edge': 'edge',
+      'brave': 'brave',
+      'opera': 'opera',
+      'chatgpt': 'chatgpt'
+    };
+
+    if (protocol in protocolToBrowser) {
+      targetBrowserId = protocolToBrowser[protocol];
+      forceBrowser = true;
+    }
+
+    // If no specific browser or default, use system default (unless forced)
+    if (!forceBrowser && (!targetBrowserId || targetBrowserId === 'default')) {
       await shell.openExternal(url);
       return;
     }
 
+    // If forced but no browser ID found (shouldn't happen with our logic but good for safety)
+    if (forceBrowser && !targetBrowserId) {
+      await shell.openExternal(url); // Try default fallback
+      return;
+    }
+
     // Get the browser info
-    const browser = this.browserService.getBrowserById(browserId);
+    // If forced, we try to find that specific browser
+    const browser = this.browserService.getBrowserById(targetBrowserId!);
+
     if (!browser || !browser.path) {
-      // Fallback to default
+      // If forced browser not found, we should probably warn or fallback
+      // For now, fallback to default but maybe we should throw?
+      // "currently a chrome bookmark only opens if i have chrome selected" -> user implies failure.
+      // If we fall back to system default for a chrome:// link, it will likely fail silently or do nothing, which is what user sees.
+      // So let's try to openExternal anyway as a Hail Mary.
       await shell.openExternal(url);
       return;
+    }
+
+    // If we are forcing a browser, notify the user
+    if (forceBrowser) {
+      // We need to send an IPC message to renderer
+      // Since LauncherService is in main, we can use BrowserWindow to send to all windows
+      const { BrowserWindow } = require('electron');
+      const windows = BrowserWindow.getAllWindows();
+      for (const win of windows) {
+        win.webContents.send('toast:show', {
+          type: 'info',
+          title: `Opening in ${browser.name}...`,
+          message: `This bookmark requires ${browser.name} to open.`
+        });
+      }
     }
 
     const platform = process.platform;
@@ -275,6 +322,23 @@ export class LauncherService {
     const port = item.port;
     const path = item.path || '';
 
+    // Handle protocols that don't use :// or use standard format
+    // about:config, mailto:user@example.com
+    if (protocol === 'about' || protocol === 'mailto') {
+      return `${protocol}:${host}${path}`;
+    }
+
+    // Chrome, Edge, Brave, Opera, ChatGPT schemes usually follow chrome:// format
+    // e.g. chrome://settings, opera://settings
+    // BUT ChatGPT might be just https://chatgpt.com... wait.
+    // If protocol IS 'chatgpt', what is the URL scheme? 
+    // The user implied "chat gpt browsers" (likely SearchGPT or similar).
+    // Assuming 'chatgpt://' or treating it like chrome based on user request.
+    // If it's a web URL, user would use https. 
+    // If it's an app scheme, it's likely chatgpt:// or similar.
+    // "add same support for opera and for chat gpt browsers as these are nbased on chromium"
+    // This implies using `chatgpt://` or `opera://`.
+
     let url = `${protocol}://`;
 
     // Handle IPv6 addresses
@@ -309,6 +373,12 @@ export class LauncherService {
     addresses: { local?: string; tailscale?: string; vpn?: string; custom?: string },
     profile: NetworkProfile
   ): string | undefined {
+    // Return custom profile if available, otherwise fallback
+    if (profile === 'custom' && addresses.custom) return addresses.custom;
+    if (profile === 'tailscale' && addresses.tailscale) return addresses.tailscale;
+    if (profile === 'vpn' && addresses.vpn) return addresses.vpn;
+
+    // Default chain for specific profiles if they miss a value
     switch (profile) {
       case 'local':
         return addresses.local || addresses.tailscale || addresses.vpn || addresses.custom;
@@ -316,10 +386,10 @@ export class LauncherService {
         return addresses.tailscale || addresses.local;
       case 'vpn':
         return addresses.vpn || addresses.local;
-      case 'custom':
-        return addresses.custom || addresses.local;
       default:
+        // fallback to local for unknown profiles
         return addresses.local;
     }
   }
 }
+

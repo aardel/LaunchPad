@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Globe, Terminal, AppWindow, FolderOpen, Eye, EyeOff, Key, Sparkles, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { X, Globe, Terminal, AppWindow, FolderOpen, Eye, EyeOff, Key, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import type { ItemType, Protocol, CreateItemInput } from '@shared/types';
 
@@ -10,7 +10,7 @@ const itemTypes: { id: ItemType; label: string; icon: typeof Globe; description:
   { id: 'password', label: 'Password', icon: Key, description: 'Password entry for a service or website' },
 ];
 
-const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'custom'];
+const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'custom'];
 
 export function AddItemModal() {
   const { isAddModalOpen, closeAddModal, createItem, groups, selectedGroupId, items, settings } = useStore();
@@ -52,7 +52,7 @@ export function AddItemModal() {
   const [service, setService] = useState('');
   const [passwordUrl, setPasswordUrl] = useState('');
   const [passwordNotes, setPasswordNotes] = useState('');
-  
+
   // AI state
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -302,13 +302,13 @@ export function AddItemModal() {
                         setIsAiGenerating(true);
                         setAiError(null);
                         try {
-                          const url = selectedType === 'bookmark' 
+                          const url = selectedType === 'bookmark'
                             ? `${protocol}://${localAddress}${port ? `:${port}` : ''}${path || ''}`
                             : undefined;
                           const res = await window.api.ai.categorizeItem(name, url, description);
                           if (res.success && res.data) {
                             // Find matching group
-                            const suggestedGroup = groups.find(g => 
+                            const suggestedGroup = groups.find(g =>
                               g.name.toLowerCase().includes(res.data!.toLowerCase()) ||
                               res.data!.toLowerCase().includes(g.name.toLowerCase())
                             );
@@ -703,7 +703,7 @@ export function AddItemModal() {
                         setIsAiGenerating(true);
                         setAiError(null);
                         try {
-                          const url = selectedType === 'bookmark' 
+                          const url = selectedType === 'bookmark'
                             ? `${protocol}://${localAddress}${port ? `:${port}` : ''}${path || ''}`
                             : undefined;
                           const res = await window.api.ai.generateDescription(name, url);
@@ -741,7 +741,7 @@ export function AddItemModal() {
                   className="input-base resize-none"
                 />
               </div>
-              
+
               {/* Tags */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -753,7 +753,7 @@ export function AddItemModal() {
                         setIsAiGenerating(true);
                         setAiError(null);
                         try {
-                          const url = selectedType === 'bookmark' 
+                          const url = selectedType === 'bookmark'
                             ? `${protocol}://${localAddress}${port ? `:${port}` : ''}${path || ''}`
                             : undefined;
                           const res = await window.api.ai.suggestTags(name, url, description);
@@ -834,7 +834,7 @@ export function AddItemModal() {
                   {aiError}
                 </div>
               )}
-              
+
               {/* Duplicate Detection */}
               {similarItems && similarItems.length > 0 && (
                 <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">

@@ -197,6 +197,9 @@ export class DatabaseService {
           selectGroup9: '9',
           showAllGroups: '0',
         },
+        backupEnabled: true,
+        backupFrequency: 'daily',
+        backupRetentionCount: 30,
       };
 
       for (const [key, value] of Object.entries(defaultSettings)) {
@@ -359,7 +362,7 @@ export class DatabaseService {
     this.save();
   }
 
-  bulkReplaceAddress(ids: string[], searchText: string, replacementText: string, profile: string = 'all'): void {
+  bulkReplaceAddress(ids: string[], searchText: string, replacementText: string, profile: string = 'all', useRegex: boolean = false): void {
     if (ids.length === 0) return;
 
     for (const id of ids) {
@@ -374,11 +377,30 @@ export class DatabaseService {
         : [profile] as const;
 
       for (const p of profiles) {
-        if (networkAddresses[p as keyof typeof networkAddresses] &&
-          networkAddresses[p as keyof typeof networkAddresses]!.includes(searchText)) {
-          networkAddresses[p as keyof typeof networkAddresses] =
-            networkAddresses[p as keyof typeof networkAddresses]!.split(searchText).join(replacementText);
-          updated = true;
+        if (networkAddresses[p as keyof typeof networkAddresses]) {
+          const originalValue = networkAddresses[p as keyof typeof networkAddresses]!;
+          let newValue = originalValue;
+
+          if (useRegex) {
+            try {
+              const regex = new RegExp(searchText, 'g');
+              newValue = originalValue.replace(regex, replacementText);
+            } catch (e) {
+              console.error('Invalid regex:', searchText);
+              // Fallback to simple replacement or just skip? 
+              // Better to skip if regex is invalid to avoid unexpected behavior.
+              continue;
+            }
+          } else {
+            if (originalValue.includes(searchText)) {
+              newValue = originalValue.split(searchText).join(replacementText);
+            }
+          }
+
+          if (newValue !== originalValue) {
+            networkAddresses[p as keyof typeof networkAddresses] = newValue;
+            updated = true;
+          }
         }
       }
 

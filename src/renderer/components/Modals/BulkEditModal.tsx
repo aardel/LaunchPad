@@ -18,6 +18,7 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
     const [searchText, setSearchText] = useState('');
     const [replacementText, setReplacementText] = useState('');
     const [profile, setProfile] = useState('all');
+    const [useRegex, setUseRegex] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
 
     // Dragging state
@@ -32,6 +33,7 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
             setPosition({ x: 0, y: 0 });
             setSearchText('');
             setReplacementText('');
+            setUseRegex(false);
             setIsUpdating(false);
             setTargetType(selectedIds.length > 0 ? 'selected' : 'groups');
             setSelectedGroupIds([]);
@@ -104,7 +106,7 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
 
         setIsUpdating(true);
         try {
-            await batchReplaceAddress(finalItemIds, searchText, replacementText, profile);
+            await batchReplaceAddress(finalItemIds, searchText, replacementText, profile, useRegex);
             onClose();
         } catch (error) {
             console.error('Bulk update failed:', error);
@@ -165,8 +167,8 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
                                 onClick={() => setTargetType('selected')}
                                 disabled={selectedIds.length === 0}
                                 className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-all ${targetType === 'selected'
-                                        ? 'bg-accent-primary/10 border-accent-primary text-accent-primary'
-                                        : 'bg-dark-800 border-dark-700 text-dark-400 hover:bg-dark-750 disabled:opacity-50 disabled:cursor-not-allowed'
+                                    ? 'bg-accent-primary/10 border-accent-primary text-accent-primary'
+                                    : 'bg-dark-800 border-dark-700 text-dark-400 hover:bg-dark-750 disabled:opacity-50 disabled:cursor-not-allowed'
                                     }`}
                             >
                                 <CheckSquare className="w-4 h-4" />
@@ -178,8 +180,8 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
                             <button
                                 onClick={() => setTargetType('groups')}
                                 className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-all ${targetType === 'groups'
-                                        ? 'bg-accent-primary/10 border-accent-primary text-accent-primary'
-                                        : 'bg-dark-800 border-dark-700 text-dark-400 hover:bg-dark-750'
+                                    ? 'bg-accent-primary/10 border-accent-primary text-accent-primary'
+                                    : 'bg-dark-800 border-dark-700 text-dark-400 hover:bg-dark-750'
                                     }`}
                             >
                                 <LayoutGrid className="w-4 h-4" />
@@ -202,8 +204,8 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
                                         key={group.id}
                                         onClick={() => toggleGroup(group.id)}
                                         className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-all ${selectedGroupIds.includes(group.id)
-                                                ? 'bg-accent-primary text-white shadow-lg'
-                                                : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
+                                            ? 'bg-accent-primary text-white shadow-lg'
+                                            : 'bg-dark-700 text-dark-300 hover:bg-dark-600'
                                             }`}
                                     >
                                         <span className="shrink-0">{group.icon}</span>
@@ -247,17 +249,30 @@ export function BulkEditModal({ isOpen, onClose, selectedIds }: BulkEditModalPro
 
                         {/* Search Text */}
                         <div>
-                            <label className="block text-xs font-medium text-dark-400 mb-1.5 uppercase tracking-wider">
-                                Text to find (within target)
-                            </label>
+                            <div className="flex items-center justify-between mb-1.5">
+                                <label className="block text-xs font-medium text-dark-400 uppercase tracking-wider">
+                                    Text to find (within target)
+                                </label>
+                                <button
+                                    onClick={() => setUseRegex(!useRegex)}
+                                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${useRegex
+                                        ? 'bg-accent-primary/10 border-accent-primary/30 text-accent-primary'
+                                        : 'bg-dark-800 border-dark-700 text-dark-400 hover:text-dark-300'
+                                        }`}
+                                >
+                                    <span className={useRegex ? 'opacity-100' : 'opacity-0'}>✓</span>
+                                    Regex
+                                </button>
+                            </div>
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
                                 <input
                                     type="text"
                                     value={searchText}
                                     onChange={(e) => setSearchText(e.target.value)}
-                                    placeholder="e.g. 192.168.0"
-                                    className="w-full bg-dark-800 border border-dark-700 rounded-lg pl-10 pr-4 py-2 text-dark-100 focus:outline-none focus:ring-2 focus:ring-accent-primary/20 focus:border-accent-primary transition-all"
+                                    placeholder={useRegex ? "^192\\.168\\.\\d+\\." : "e.g. 192.168.0"}
+                                    className={`w-full bg-dark-800 border rounded-lg pl-10 pr-4 py-2 text-dark-100 focus:outline-none focus:ring-2 focus:ring-accent-primary/20 transition-all ${useRegex ? 'border-accent-primary/30 font-mono text-sm' : 'border-dark-700'
+                                        }`}
                                 />
                             </div>
                         </div>
