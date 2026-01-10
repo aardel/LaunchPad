@@ -26,6 +26,10 @@ export class AIService {
     this.enabled = true;
   }
 
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
   isEnabled(): boolean {
     return this.enabled && !!this.apiKey;
   }
@@ -47,6 +51,7 @@ export class AIService {
     if (!this.isEnabled()) return null;
 
     try {
+      console.log(`[AIService] Generating text with model llama-3.1-8b-instant. Tokens: ${maxTokens}`);
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -68,14 +73,16 @@ export class AIService {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Groq generation error:', errorText);
+        console.error(`[AIService] Groq API Error (${response.status}):`, errorText);
         return null;
       }
 
       const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
-      return data.choices?.[0]?.message?.content?.trim() || null;
+      const content = data.choices?.[0]?.message?.content?.trim() || null;
+      console.log('[AIService] Generation success:', content ? 'Content received' : 'No content');
+      return content;
     } catch (error) {
-      console.error('Error generating text:', error);
+      console.error('[AIService] Network/Runtime Error:', error);
       return null;
     }
   }

@@ -40,7 +40,7 @@ let healthCheckService: HealthCheckService;
 let syncService: SyncService;
 let extensionServer: ExtensionServer;
 let aiService: AIService;
-let backupService: BackupService;
+let backupService: BackupService | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -121,15 +121,15 @@ async function initializeServices() {
   browserBookmarks = new BrowserBookmarksService();
   launcher = new LauncherService(browserService, healthCheckService);
   syncService = new SyncService(encryption);
-  extensionServer = new ExtensionServer(db, aiService);
-  backupService = new BackupService();
-
   // Initialize AI service
   const settings = db.getSettings();
   aiService = new AIService({
     apiKey: settings.groqApiKey,
     enabled: settings.aiEnabled || false,
   });
+
+  extensionServer = new ExtensionServer(db, aiService);
+  backupService = new BackupService();
 
   // Set callback for when bookmarks are added via extension
   extensionServer.setOnBookmarkAdded((item) => {
@@ -480,6 +480,11 @@ function setupIPC() {
         aiService.setApiKey(settings.groqApiKey);
       }
 
+      // Update AI service enabled state
+      if (settings.aiEnabled !== undefined) {
+        aiService.setEnabled(settings.aiEnabled);
+      }
+
       return { success: true, data: updated };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -712,6 +717,31 @@ function setupIPC() {
     }
 
     return { success: true, data: result.filePaths[0] };
+  });
+
+  ipcMain.handle('system:openExtensionFolder', async (_, browser: 'chrome' | 'safari'): Promise<IPCResponse<void>> => {
+    try {
+      const extensionPath = browser === 'chrome'
+        ? path.join(__dirname, '../../LaunchIt-Extension-Chromium')
+        : path.join(__dirname, '../../LaunchIt-Extension-Safari');
+
+      // In prod, resources structure might be different, but for now dev/root is fine.
+      // If packed, we might need to point to where we unpacked resources or just tell user to download.
+      // Assuming 'dev' usage for now as per user context.
+
+      // Check if dev or prod to find correct path if needed, 
+      // but 'npm run build:main' puts index.js in dist/main, so ../.. goes to root.
+      // If packed, these source folders might not exist unless we copy them. 
+      // User is running 'npm run dev', so this path should work.
+
+      const error = await shell.openPath(extensionPath);
+      if (error) {
+        return { success: false, error };
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
   });
 
   // ===== Search =====

@@ -15,46 +15,84 @@
       <p class="subtitle">Quick Add Bookmark</p>
     </div>
 
-    <form id="bookmarkForm">
-      <div class="form-group">
-        <label for="name">Name</label>
-        <input type="text" id="name" required autofocus>
-      </div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="tab-add">Add</button>
+      <button class="tab-btn" data-tab="tab-search">Search</button>
+      <button class="tab-btn" data-tab="tab-info">Info</button>
+    </div>
 
-      <div class="form-group">
-        <label for="url">URL</label>
-        <input type="url" id="url" required>
-      </div>
+    <!-- ADD TAB -->
+    <div id="tab-add" class="tab-content active">
+      <form id="bookmarkForm">
+        <div class="form-group">
+          <label for="name">Name</label>
+          <input type="text" id="name" required autofocus>
+        </div>
 
+        <div class="form-group">
+          <label for="url">URL</label>
+          <input type="url" id="url" required>
+        </div>
+
+        <div class="form-group">
+          <label for="description">Description (optional)</label>
+          <div class="input-with-button">
+            <input type="text" id="description">
+            <button type="button" id="magicDesc" class="magic-btn" title="Auto-generate description">✨</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="tags">Tags (comma separated)</label>
+          <div class="input-with-button">
+            <input type="text" id="tags" placeholder="e.g. work, research, dev">
+            <button type="button" id="magicTags" class="magic-btn" title="Suggest tags">✨</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="group">Group</label>
+          <div class="input-with-button">
+            <select id="group" required>
+              <option value="">Loading...</option>
+            </select>
+            <input type="text" id="newGroupName" class="hidden" placeholder="New Group Name">
+            <button type="button" id="cancelNewGroup" class="magic-btn hidden" title="Cancel">✕</button>
+            <button type="button" id="magicGroup" class="magic-btn" title="Auto-suggest group">✨</button>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" id="submitBtn" class="btn-primary">
+            <span id="submitText">Add to LaunchIt</span>
+            <span id="submitSpinner" class="spinner hidden"></span>
+          </button>
+        </div>
+
+        <div id="status" class="status hidden"></div>
+      </form>
+    </div>
+
+    <!-- SEARCH TAB -->
+    <div id="tab-search" class="tab-content">
       <div class="form-group">
-        <label for="description">Description (optional)</label>
-        <div class="input-with-button">
-          <input type="text" id="description">
-          <button type="button" id="magicDesc" class="magic-btn" title="Auto-generate description">✨</button>
+        <input type="text" id="searchInput" placeholder="Search saved bookmarks..." autocomplete="off">
+      </div>
+      <div id="searchResults" class="search-results">
+        <div style="text-align: center; color: #888; padding: 20px;">Type to search...</div>
+      </div>
+    </div>
+
+    <!-- INFO TAB -->
+    <div id="tab-info" class="tab-content">
+      <div class="status-card" style="background: #2a2a2a; border-radius: 8px; padding: 15px; text-align: center;">
+        <h3 style="margin-bottom: 10px; color: #6366f1;">Using LaunchIt</h3>
+        <p style="color: #ccc; font-size: 13px; margin-bottom: 5px;">Your vault is active.</p>
+        <div id="vaultStats" style="margin-top: 15px; font-size: 12px; color: #888;">
+          Loading stats...
         </div>
       </div>
-
-      <div class="form-group">
-        <label for="tags">Tags (comma separated)</label>
-        <input type="text" id="tags" placeholder="e.g. work, research, dev">
-      </div>
-
-      <div class="form-group">
-        <label for="group">Group</label>
-        <select id="group" required>
-          <option value="">Loading...</option>
-        </select>
-      </div>
-
-      <div class="form-actions">
-        <button type="submit" id="submitBtn" class="btn-primary">
-          <span id="submitText">Add to LaunchIt</span>
-          <span id="submitSpinner" class="spinner hidden"></span>
-        </button>
-      </div>
-
-      <div id="status" class="status hidden"></div>
-    </form>
+    </div>
 
     <div class="footer">
       <div id="connectionStatus" class="connection-status">

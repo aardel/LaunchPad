@@ -44,6 +44,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('magicTags').addEventListener('click', suggestTags);
 
   // Tabs
+  // Tabs
+  // Load saved tab
+  const lastTab = localStorage.getItem('lastActiveTab') || 'tab-add';
+  const savedBtn = document.querySelector(`.tab-btn[data-tab="${lastTab}"]`);
+  if (savedBtn) {
+    // Remove active from default (Add)
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+    // Activate saved
+    savedBtn.classList.add('active');
+    document.getElementById(lastTab).classList.add('active');
+
+    // Focus search if it was the last tab
+    if (lastTab === 'tab-search') {
+      setTimeout(() => document.getElementById('searchInput').focus(), 100);
+    }
+  }
+
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       // Remove active class from all
@@ -52,12 +71,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       // Add active to clicked
       btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
+      const tabId = btn.dataset.tab;
+      document.getElementById(tabId).classList.add('active');
+
+      // Save to localStorage
+      localStorage.setItem('lastActiveTab', tabId);
 
       // Load specific tab data
-      if (btn.dataset.tab === 'tab-info') {
+      if (tabId === 'tab-info') {
         loadStats();
-      } else if (btn.dataset.tab === 'tab-search') {
+      } else if (tabId === 'tab-search') {
         document.getElementById('searchInput').focus();
       }
     });
@@ -72,7 +95,27 @@ document.addEventListener('DOMContentLoaded', async () => {
       performSearch(e.target.value);
     }, 300);
   });
+
+  // Check AI capability
+  checkAICapability();
 });
+
+async function checkAICapability() {
+  try {
+    const response = await fetch(`${LAUNCHIT_SERVER}/api/stats`);
+    const result = await response.json();
+    if (result.success && result.data.aiEnabled === false) {
+      document.querySelectorAll('.magic-btn').forEach(btn => {
+        btn.disabled = true;
+        btn.title = "AI features disabled. Configure API Key in LaunchIt Settings.";
+        btn.style.opacity = '0.3';
+        btn.style.cursor = 'not-allowed';
+      });
+    }
+  } catch (e) {
+    console.warn('Could not check AI capability');
+  }
+}
 
 async function performSearch(query) {
   const container = document.getElementById('searchResults');
@@ -89,7 +132,7 @@ async function performSearch(query) {
 
     if (result.success && result.data && result.data.length > 0) {
       container.innerHTML = result.data.map(item => `
-        <div class="search-item" onclick="openLink('${item.url}')">
+        <div class="search-item" data-url="${item.url}">
           <img src="${item.icon || 'icons/icon48.png'}" onerror="this.src='icons/icon48.png'">
           <div class="search-item-info">
             <div class="search-item-title">${item.name}</div>
@@ -97,6 +140,14 @@ async function performSearch(query) {
           </div>
         </div>
       `).join('');
+
+      // Add click listeners
+      container.querySelectorAll('.search-item').forEach(el => {
+        el.addEventListener('click', () => {
+          const url = el.getAttribute('data-url');
+          if (url) openLink(url);
+        });
+      });
     } else {
       container.innerHTML = '<div style="text-align: center; color: #888; padding: 20px;">No results found</div>';
     }
@@ -343,6 +394,13 @@ async function loadGroups() {
       groupSelect.value = groups[0].id;
     }
 
+    // Add "Create New Group" option
+    const newOption = document.createElement('option');
+    newOption.value = '__NEW_GROUP__';
+    newOption.textContent = '+ Create New Group';
+    newOption.style.fontWeight = 'bold';
+    groupSelect.appendChild(newOption);
+
     groupSelect.disabled = false;
   } catch (error) {
     console.error('Failed to load groups:', error);
@@ -360,6 +418,47 @@ async function loadGroups() {
       statusDiv.classList.add('clickable');
     }
   }
+}
+
+// Handle New Group UI
+const groupSelect = document.getElementById('group');
+const newGroupInput = document.getElementById('newGroupName');
+const cancelNewGroupBtn = document.getElementById('cancelNewGroup');
+const magicGroupBtn = document.getElementById('magicGroup');
+
+groupSelect.addEventListener('change', (e) => {
+  if (e.target.value === '__NEW_GROUP__') {
+    groupSelect.classList.add('hidden');
+    magicGroupBtn.classList.add('hidden');
+    newGroupInput.classList.remove('hidden');
+    cancelNewGroupBtn.classList.remove('hidden');
+    newGroupInput.focus();
+    newGroupInput.required = true;
+    groupSelect.required = false;
+  }
+});
+
+cancelNewGroupBtn.addEventListener('click', () => {
+  newGroupInput.classList.add('hidden');
+  cancelNewGroupBtn.classList.add('hidden');
+  groupSelect.classList.remove('hidden');
+  magicGroupBtn.classList.remove('hidden');
+  groupSelect.value = groupSelect.querySelector('option') ? groupSelect.querySelector('option').value : '';
+  newGroupInput.value = '';
+  newGroupInput.required = false;
+  groupSelect.required = true;
+});
+
+// Create Group Helper
+async function createNewGroup(name) {
+  const response = await fetch(`${LAUNCHIT_SERVER}/api/groups`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, icon: '📁' })
+  });
+  const result = await response.json();
+  if (result.success) return result.data;
+  throw new Error(result.error || 'Failed to create group');
 }
 
 document.getElementById('bookmarkForm').addEventListener('submit', async (e) => {
@@ -382,9 +481,17 @@ document.getElementById('bookmarkForm').addEventListener('submit', async (e) => 
   });
 
   const tags = document.getElementById('tags').value.trim();
-  const groupId = document.getElementById('group').value;
+  let groupId = document.getElementById('group').value;
+  const newGroupName = document.getElementById('newGroupName').value.trim();
+  const isNewGroupMode = !document.getElementById('newGroupName').classList.contains('hidden');
 
-  if (!name || !url || !groupId) {
+  if (isNewGroupMode) {
+    if (!newGroupName) {
+      showStatus('Please enter a group name', 'error');
+      return;
+    }
+    // We'll create the group in the try block
+  } else if (!name || !url || !groupId) {
     showStatus('Please fill in all required fields', 'error');
     return;
   }
@@ -404,6 +511,14 @@ document.getElementById('bookmarkForm').addEventListener('submit', async (e) => 
   status.classList.add('hidden');
 
   try {
+    // Create group if needed
+    if (isNewGroupMode) {
+      submitText.textContent = 'Creating Group...';
+      const group = await createNewGroup(newGroupName);
+      groupId = group.id;
+      submitText.textContent = 'Adding Bookmark...';
+    }
+
     const response = await fetch(`${LAUNCHIT_SERVER}/api/bookmarks`, {
       method: 'POST',
       headers: {

@@ -12,7 +12,7 @@ import { ImportConflictModal, type GroupConflict } from './ImportConflictModal';
 import type { NetworkProfile } from '@shared/types';
 import type { ExportData } from '../../../main/services/importExport';
 
-type SettingsTab = 'general' | 'security' | 'network' | 'terminal' | 'shortcuts' | 'data' | 'ai' | 'about';
+type SettingsTab = 'general' | 'security' | 'network' | 'terminal' | 'shortcuts' | 'data' | 'ai' | 'extensions' | 'about';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
   { id: 'general', label: 'General', icon: Palette },
@@ -22,6 +22,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
   { id: 'data', label: 'Data', icon: Database },
   { id: 'ai', label: 'AI Features', icon: Sparkles },
+  { id: 'extensions', label: 'Extensions', icon: Globe },
   { id: 'about', label: 'About', icon: Info },
 ];
 
@@ -717,6 +718,73 @@ export function SettingsModal() {
                   <p className="text-xs text-dark-300 flex items-center gap-2">
                     💡 <span>Press Escape while recording to cancel. System shortcuts show warnings.</span>
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* Extensions Tab */}
+            {activeTab === 'extensions' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">Browser Extensions</h3>
+                  <p className="text-sm text-dark-400 mb-6">
+                    LaunchIt integrates with your browser to let you quickly save items and use AI features.
+                  </p>
+
+                  <div className="space-y-4">
+                    {/* Chrome / Chromium */}
+                    <div className="p-4 bg-dark-800/50 rounded-xl border border-dark-700">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <Globe className="w-5 h-5 text-blue-400" />
+                          <div>
+                            <p className="font-medium text-dark-100">Chrome / Edge / Brave</p>
+                            <p className="text-xs text-dark-400">Chromium-based browsers</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => window.api.system.openExtensionFolder('chrome')}
+                          className="btn-secondary text-xs"
+                        >
+                          Open Extension Folder
+                        </button>
+                      </div>
+                      <div className="space-y-2 text-sm text-dark-300">
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Open <code className="bg-dark-900 px-1 rounded">chrome://extensions</code> in your browser</li>
+                          <li>Enable <strong>Developer mode</strong> (top right toggle)</li>
+                          <li>Click "Load unpacked" and select the folder, or drag the folder here</li>
+                        </ol>
+                      </div>
+                    </div>
+
+                    {/* Safari */}
+                    <div className="p-4 bg-dark-800/50 rounded-xl border border-dark-700">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <Command className="w-5 h-5 text-blue-400" />
+                          <div>
+                            <p className="font-medium text-dark-100">Safari</p>
+                            <p className="text-xs text-dark-400">macOS specific</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => window.api.system.openExtensionFolder('safari')}
+                          className="btn-secondary text-xs"
+                        >
+                          Open Extension Folder
+                        </button>
+                      </div>
+                      <div className="space-y-2 text-sm text-dark-300">
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Open Safari Settings → Advanced</li>
+                          <li>Check "Show Develop menu in menu bar"</li>
+                          <li>In Develop menu, enable "Allow Unsigned Extensions"</li>
+                          <li>Use "safari-web-extension-converter" (Requires Xcode) or drag folder if signed</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

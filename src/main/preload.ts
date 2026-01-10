@@ -88,6 +88,8 @@ const api = {
       ipcRenderer.invoke('system:getTheme'),
     selectApp: (): Promise<IPCResponse<string | null>> =>
       ipcRenderer.invoke('system:selectApp'),
+    openExtensionFolder: (browser: 'chrome' | 'safari'): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('system:openExtensionFolder', browser),
   },
 
   // Search

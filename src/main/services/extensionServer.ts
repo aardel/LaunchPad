@@ -2,7 +2,6 @@ import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { URL } from 'url';
 import { DatabaseService } from './database';
 import type { CreateItemInput, AnyItem } from '../../shared/types';
-
 import { AIService } from './aiService';
 
 export class ExtensionServer {
@@ -66,10 +65,13 @@ export class ExtensionServer {
 
     const url = new URL(req.url || '/', `http://${req.headers.host}`);
     const pathname = url.pathname;
+    const searchParams = url.searchParams;
 
     try {
       if (pathname === '/api/groups' && req.method === 'GET') {
         await this.handleGetGroups(res);
+      } else if (pathname === '/api/groups' && req.method === 'POST') {
+        await this.handleCreateGroup(req, res);
       } else if (pathname === '/api/bookmarks' && req.method === 'POST') {
         await this.handleAddBookmark(req, res);
       } else if (pathname === '/api/ai/suggest-group' && req.method === 'POST') {
@@ -80,7 +82,7 @@ export class ExtensionServer {
         await this.handleSuggestTags(req, res);
       } else if (pathname === '/api/bookmarks/check' && req.method === 'POST') {
         await this.handleCheckUrl(req, res);
-      } else if (pathname.startsWith('/api/search') && req.method === 'GET') {
+      } else if (pathname === '/api/search' && req.method === 'GET') {
         await this.handleSearch(req, res, searchParams);
       } else if (pathname === '/api/stats' && req.method === 'GET') {
         await this.handleGetStats(res);
@@ -107,6 +109,33 @@ export class ExtensionServer {
     res.end(JSON.stringify(groups));
   }
 
+  private async handleCreateGroup(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!this.db) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Database not available' }));
+      return;
+    }
+
+    this.processBody(req, res, async (data) => {
+      const { name, icon } = data;
+
+      if (!name) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Group name is required' }));
+        return;
+      }
+
+      try {
+        const group = this.db!.createGroup({ name, icon: icon || '📁' });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, data: group }));
+      } catch (error) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: String(error) }));
+      }
+    });
+  }
+
   private async handleAddBookmark(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!this.db) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -114,72 +143,60 @@ export class ExtensionServer {
       return;
     }
 
-    let body = '';
-    req.on('data', (chunk) => {
-      body += chunk.toString();
-    });
+    this.processBody(req, res, async (data) => {
+      const { name, url, description, groupId, tags } = data;
 
-    req.on('end', () => {
+      if (!name || !url || !groupId) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Missing required fields' }));
+        return;
+      }
+
+      // Parse tags
+      let tagList: string[] = [];
+      if (Array.isArray(tags)) {
+        tagList = tags;
+      } else if (typeof tags === 'string') {
+        tagList = tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      }
+
+      // Parse URL to extract protocol, hostname, port, path
+      let urlObj: URL;
       try {
-        const data = JSON.parse(body);
-        const { name, url, description, groupId, tags } = data;
+        urlObj = new URL(url);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Invalid URL' }));
+        return;
+      }
 
-        if (!name || !url || !groupId) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Missing required fields' }));
-          return;
-        }
+      const protocol = urlObj.protocol.replace(':', '') as 'http' | 'https';
+      const hostname = urlObj.hostname;
+      const port = urlObj.port ? parseInt(urlObj.port, 10) : undefined;
+      const path = urlObj.pathname !== '/' ? urlObj.pathname + urlObj.search : undefined;
 
-        // Parse tags
-        let tagList: string[] = [];
-        if (Array.isArray(tags)) {
-          tagList = tags;
-        } else if (typeof tags === 'string') {
-          tagList = tags.split(',').map(t => t.trim()).filter(t => t.length > 0);
-        }
+      const input: CreateItemInput = {
+        type: 'bookmark',
+        name,
+        description,
+        groupId,
+        tags: tagList,
+        protocol,
+        port,
+        path,
+        networkAddresses: {
+          local: hostname,
+        },
+      };
 
-        // Parse URL to extract protocol, hostname, port, path
-        let urlObj: URL;
-        try {
-          urlObj = new URL(url);
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Invalid URL' }));
-          return;
-        }
+      const item = this.db!.createItem(input);
 
-        const protocol = urlObj.protocol.replace(':', '') as 'http' | 'https';
-        const hostname = urlObj.hostname;
-        const port = urlObj.port ? parseInt(urlObj.port, 10) : undefined;
-        const path = urlObj.pathname !== '/' ? urlObj.pathname + urlObj.search : undefined;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, data: item }));
 
-        const input: CreateItemInput = {
-          type: 'bookmark',
-          name,
-          description,
-          groupId,
-          tags: tagList,
-          protocol,
-          port,
-          path,
-          networkAddresses: {
-            local: hostname,
-          },
-        };
-
-        const item = this.db!.createItem(input);
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, data: item }));
-
-        // Notify via callback
-        if (this.onBookmarkAdded) {
-          this.onBookmarkAdded(item);
-        }
-      } catch (error) {
-        console.error('Error processing bookmark:', error);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: String(error) }));
+      // Notify via callback
+      if (this.onBookmarkAdded) {
+        this.onBookmarkAdded(item);
       }
     });
   }
@@ -193,7 +210,7 @@ export class ExtensionServer {
 
     this.processBody(req, res, async (data) => {
       const { title, url, html } = data;
-      const result = await this.aiService!.categorizeItem(title || '', url, html); // sending html as description for now or context
+      const result = await this.aiService!.categorizeItem(title || '', url, html);
 
       // If we got a category name, try to find the group ID
       let groupId = '';
@@ -253,10 +270,9 @@ export class ExtensionServer {
       }
 
       const items = this.db.getAllItems();
-      // Simple exact match check. Could be improved with normalization.
       const existing = items.find(item => {
-        if (item.type === 'bookmark') return (item as any).url === url;
-        // Check network addresses for other types if strictly needed, but URL is main case
+        const itemUrl = this.getItemUrl(item);
+        if (itemUrl) return itemUrl.toLowerCase() === url.toLowerCase();
         return false;
       });
 
@@ -265,78 +281,86 @@ export class ExtensionServer {
     });
   }
 
-});
+  private async handleSearch(req: IncomingMessage, res: ServerResponse, params: URLSearchParams): Promise<void> {
+    if (!this.db) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Database not initialized' }));
+      return;
+    }
+
+    const query = params.get('q');
+    if (!query) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, data: [] }));
+      return;
+    }
+
+    const results = this.db.searchItems(query).slice(0, 20);
+
+    const safeResults = results.map(item => ({
+      id: item.id,
+      name: item.name,
+      url: this.getItemUrl(item),
+      icon: item.icon
+    }));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, data: safeResults }));
   }
 
-  private async handleSearch(req: IncomingMessage, res: ServerResponse, params: URLSearchParams): Promise < void> {
-  if(!this.db) {
-  res.writeHead(503, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ success: false, error: 'Database not initialized' }));
-  return;
-}
-
-const query = params.get('q');
-if (!query) {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ success: true, data: [] }));
-  return;
-}
-
-// Limit extension search results to 20 for performance
-const results = this.db.searchItems(query).slice(0, 20);
-
-// Filter to return safe data
-const safeResults = results.map(item => ({
-  id: item.id,
-  name: item.name,
-  url: item.url,
-  icon: item.icon
-}));
-
-res.writeHead(200, { 'Content-Type': 'application/json' });
-res.end(JSON.stringify({ success: true, data: safeResults }));
+  private getItemUrl(item: AnyItem): string | undefined {
+    if (item.type === 'bookmark') {
+      const host = item.networkAddresses.local || item.networkAddresses.tailscale || item.networkAddresses.vpn || item.networkAddresses.custom;
+      if (!host) return undefined;
+      const port = item.port ? `:${item.port}` : '';
+      const path = item.path || '';
+      return `${item.protocol}://${host}${port}${path}`;
+    }
+    if (item.type === 'password') {
+      return item.url;
+    }
+    return undefined;
   }
 
-  private async handleGetStats(res: ServerResponse): Promise < void> {
-  if(!this.db) {
-  res.writeHead(503, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ success: false, error: 'Database not initialized' }));
-  return;
-}
+  private async handleGetStats(res: ServerResponse): Promise<void> {
+    if (!this.db) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Database not initialized' }));
+      return;
+    }
 
-const items = this.db.getAllItems();
-const groups = this.db.getAllGroups();
+    const items = this.db.getAllItems();
+    const groups = this.db.getAllGroups();
 
-res.writeHead(200, { 'Content-Type': 'application/json' });
-res.end(JSON.stringify({
-  success: true,
-  data: {
-    itemsCount: items.length,
-    groupsCount: groups.length,
-    version: '1.1.0'
-  }
-}));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      data: {
+        itemsCount: items.length,
+        groupsCount: groups.length,
+        version: '1.1.0',
+        aiEnabled: this.aiService ? this.aiService.isEnabled() : false
+      }
+    }));
   }
 
   private processBody(req: IncomingMessage, res: ServerResponse, callback: (data: any) => Promise<void>): void {
-  let body = '';
-  req.on('data', (chunk) => {
-    body += chunk.toString();
-  });
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
 
-  req.on('end', async () => {
-    try {
-      const data = JSON.parse(body);
-      await callback(data);
-    } catch (error) {
-      console.error('Extension server request processing error:', error);
-      if (!res.writableEnded) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: String(error) }));
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body);
+        await callback(data);
+      } catch (error) {
+        console.error('Extension server request processing error:', error);
+        if (!res.writableEnded) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: String(error) }));
+        }
       }
-    }
-  });
+    });
+  }
 }
-}
-
-
