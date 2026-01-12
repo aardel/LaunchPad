@@ -196,6 +196,11 @@ export function UnlockModal() {
               ⚠️ There is no way to recover your password. Please remember it!
             </p>
           </form>
+
+          {/* Version Label */}
+          <div className="absolute bottom-4 right-4 text-xs text-dark-500 font-mono opacity-50">
+            v1.3.0
+          </div>
         </div>
       </div>
     );
@@ -210,7 +215,8 @@ export function UnlockModal() {
           <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-dark-700 to-dark-800 rounded-2xl flex items-center justify-center text-4xl border border-dark-600">
             <Lock className="w-10 h-10 text-dark-400" />
           </div>
-          <h1 className="text-3xl font-bold text-dark-100 mb-2">Vault Locked</h1>
+          <h2 className="text-2xl font-bold gradient-text mb-1">LaunchIt</h2>
+          <h1 className="text-xl font-medium text-dark-200 mb-2">Vault Locked</h1>
           <p className="text-dark-400">Enter your master password to continue</p>
         </div>
 
@@ -273,6 +279,11 @@ export function UnlockModal() {
             )}
           </button>
         </form>
+      </div>
+
+      {/* Version Label */}
+      <div className="absolute bottom-4 right-4 text-xs text-dark-500 font-mono opacity-50">
+        v1.3.0
       </div>
     </div>
   );

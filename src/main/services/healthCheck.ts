@@ -37,7 +37,14 @@ export class HealthCheckService {
 
     // Skip health check for internal browser protocols and non-network schemes
     const protocol = item.protocol || 'https';
-    const excludedProtocols = ['chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'mailto', 'app'];
+    const excludedProtocols = [
+      'chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'mailto', 'app',
+      'ftp', 'sftp', 'ftps',
+      'smb', 'afp', 'nfs', 'file',
+      'postgres', 'mysql', 'mongodb', 'redis',
+      'vscode', 'cursor', 'jetbrains', 'git',
+      'slack', 'discord', 'zoommtg', 'tg'
+    ];
 
     if (excludedProtocols.includes(protocol) || url.startsWith('file://')) {
       result.status = 'healthy';

@@ -49,7 +49,7 @@ export const DashboardWidget: React.FC = () => {
 
     return (
         <div
-            className={`fixed bottom-6 right-6 z-[90] bg-dark-900/95 backdrop-blur-xl border border-dark-700 rounded-2xl shadow-2xl transition-all duration-300 ${isExpanded ? 'w-[480px] max-h-[600px]' : 'w-80 max-h-96'
+            className={`fixed bottom-6 right-6 z-[90] bg-dark-900/95 backdrop-blur-xl border border-dark-700 rounded-2xl shadow-2xl transition-all duration-300 flex flex-col overflow-hidden ${isExpanded ? 'w-[480px] max-h-[600px]' : 'w-80 max-h-96'
                 }`}
         >
             {/* Header */}
@@ -78,7 +78,7 @@ export const DashboardWidget: React.FC = () => {
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-3 overflow-y-auto max-h-[500px] custom-scrollbar">
+            <div className="p-4 space-y-3 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
                 {dashboardMetrics.length === 0 ? (
                     <div className="text-center py-8 text-dark-500">
                         <Activity className="w-12 h-12 mx-auto mb-3 opacity-50" />

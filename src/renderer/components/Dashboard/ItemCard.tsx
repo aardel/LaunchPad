@@ -397,11 +397,17 @@ export function ItemCard({ item, compact = false }: { item: AnyItem; compact?: b
           {/* Footer */}
           <div className={`flex items-center justify-between ${compact ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-dark-700/50`}>
             {/* Type badge */}
+            {/* Protocol/Type badge */}
             <span
-              className={`${compact ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'} font-medium capitalize ${typeColors[item.type]} 
-                         bg-current/10 rounded`}
+              className={`${compact ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2 py-0.5'} font-medium uppercase text-accent-success bg-accent-success/10 rounded`}
             >
-              {item.type}
+              {item.type === 'bookmark'
+                ? (item as BookmarkItem).protocol || 'WEBLINK'
+                : item.type === 'ssh'
+                  ? 'SSH'
+                  : item.type === 'app'
+                    ? 'APP'
+                    : 'SECURE'}
             </span>
 
             {/* Health status indicator */}

@@ -42,7 +42,7 @@ export class LauncherService {
 
     switch (item.type) {
       case 'bookmark':
-        await this.launchBookmark(item, finalProfile, browserId);
+        await this.launchBookmark(item, finalProfile, browserId, decryptedPassword);
         break;
       case 'ssh':
         await this.launchSSH(item, finalProfile, decryptedPassword, terminal);
@@ -57,8 +57,22 @@ export class LauncherService {
     return { profileUsed: finalProfile, routed };
   }
 
-  private async launchBookmark(item: BookmarkItem, profile: NetworkProfile, browserId?: string): Promise<void> {
-    const url = this.buildUrl(item, profile);
+  private async launchBookmark(item: BookmarkItem, profile: NetworkProfile, browserId?: string, decryptedPassword?: string): Promise<void> {
+    let url = this.buildUrl(item, profile);
+
+    // For FTP/SFTP, inject credentials if available
+    if (['ftp', 'sftp', 'ftps'].includes(item.protocol || '') && item.credentials?.username) {
+      const username = encodeURIComponent(item.credentials.username);
+      const password = decryptedPassword ? `:${encodeURIComponent(decryptedPassword)}` : '';
+
+      // Inject user:pass@ into the URL
+      // buildUrl returns protocol://host... or protocol://[ipv6]...
+      // We want protocol://user:pass@host...
+      const protocolPart = `${item.protocol}://`;
+      if (url.startsWith(protocolPart)) {
+        url = url.replace(protocolPart, `${protocolPart}${username}${password}@`);
+      }
+    }
 
     // Check if the protocol requires a specific browser
     const protocol = item.protocol || 'https';

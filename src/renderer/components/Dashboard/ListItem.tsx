@@ -288,12 +288,17 @@ export function ListItem({
           {group.icon} {group.name}
         </div>
 
-        {/* Type Badge */}
+        {/* Protocol/Type Badge */}
         <span
-          className={`text-xs font-medium capitalize ${typeColors[item.type]} 
-                     bg-current/10 px-2 py-1 rounded min-w-[70px] text-center`}
+          className="text-xs font-medium uppercase text-accent-success bg-accent-success/10 px-2 py-1 rounded min-w-[70px] text-center"
         >
-          {item.type}
+          {item.type === 'bookmark'
+            ? (item as BookmarkItem).protocol || 'WEBLINK'
+            : item.type === 'ssh'
+              ? 'SSH'
+              : item.type === 'app'
+                ? 'APP'
+                : 'SECURE'}
         </span>
 
         {/* Actions */}

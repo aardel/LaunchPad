@@ -2,8 +2,19 @@ import { useState, useEffect } from 'react';
 import { X, FolderOpen, Eye, EyeOff, Key, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import type { Protocol, UpdateItemInput, BookmarkItem, SSHItem, AppItem, PasswordItem } from '@shared/types';
+import { NETWORK_PROTOCOLS } from '../../constants';
 
-const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'custom'];
+const protocols: Protocol[] = [
+  'https', 'http',
+  'ftp', 'sftp', 'ftps',
+  'smb', 'afp', 'nfs', 'file',
+  'postgres', 'mysql', 'mongodb', 'redis',
+  'vscode', 'cursor', 'jetbrains', 'git',
+  'slack', 'discord', 'zoommtg', 'tg',
+  'rdp', 'vnc',
+  'chrome', 'edge', 'brave', 'opera', 'chatgpt',
+  'about', 'custom'
+];
 
 export function EditItemModal() {
   const {
@@ -486,7 +497,9 @@ export function EditItemModal() {
                 </div>
 
                 <div>
-                  <label className="input-label">URL Path (Optional)</label>
+                  <label className="input-label">
+                    {['ftp', 'sftp', 'ftps'].includes(protocol) ? 'Remote Directory (Optional)' : 'URL Path (Optional)'}
+                  </label>
                   <input
                     type="text"
                     value={path}
@@ -530,26 +543,30 @@ export function EditItemModal() {
                         Used when no specific network profile is selected
                       </p>
                     </div>
-                    <div>
-                      <label className="input-label text-xs">Tailscale Address (Optional)</label>
-                      <input
-                        type="text"
-                        value={tailscaleAddress}
-                        onChange={(e) => setTailscaleAddress(e.target.value)}
-                        placeholder="myserver.tailnet.ts.net"
-                        className="input-base text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="input-label text-xs">VPN Address (Optional)</label>
-                      <input
-                        type="text"
-                        value={vpnAddress}
-                        onChange={(e) => setVpnAddress(e.target.value)}
-                        placeholder="10.0.0.100 or vpn.example.com"
-                        className="input-base text-sm"
-                      />
-                    </div>
+                    {NETWORK_PROTOCOLS.includes(protocol) && (
+                      <>
+                        <div>
+                          <label className="input-label text-xs">Tailscale Address (Optional)</label>
+                          <input
+                            type="text"
+                            value={tailscaleAddress}
+                            onChange={(e) => setTailscaleAddress(e.target.value)}
+                            placeholder="myserver.tailnet.ts.net"
+                            className="input-base text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="input-label text-xs">VPN Address (Optional)</label>
+                          <input
+                            type="text"
+                            value={vpnAddress}
+                            onChange={(e) => setVpnAddress(e.target.value)}
+                            placeholder="10.0.0.100 or vpn.example.com"
+                            className="input-base text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -932,16 +949,7 @@ export function EditItemModal() {
                   </p>
                 </div>
 
-                <div>
-                  <label className="input-label">Notes</label>
-                  <textarea
-                    value={passwordNotes}
-                    onChange={(e) => setPasswordNotes(e.target.value)}
-                    placeholder="Additional notes or information..."
-                    rows={3}
-                    className="input-base resize-none"
-                  />
-                </div>
+
               </>
             )}
 
@@ -1111,9 +1119,9 @@ export function EditItemModal() {
               </button>
             </div>
           </form>
-        </div>
-      </div>
-    </div>
+        </div >
+      </div >
+    </div >
   );
 }
 

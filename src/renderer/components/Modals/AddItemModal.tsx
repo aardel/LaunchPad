@@ -1,16 +1,27 @@
 import { useState, useEffect } from 'react';
-import { X, Globe, Terminal, AppWindow, FolderOpen, Eye, EyeOff, Key, Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import { X, Globe, Terminal, AppWindow, FolderOpen, Eye, EyeOff, Key, Sparkles, Loader2, AlertCircle, HelpCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import { NETWORK_PROTOCOLS, PROTOCOL_CATEGORIES, FIELD_HELP_CONTENT } from '../../constants';
 import type { ItemType, Protocol, CreateItemInput } from '@shared/types';
 
 const itemTypes: { id: ItemType; label: string; icon: typeof Globe; description: string }[] = [
-  { id: 'bookmark', label: 'Bookmark', icon: Globe, description: 'Web URL, local service, or API endpoint' },
-  { id: 'ssh', label: 'SSH Connection', icon: Terminal, description: 'SSH connection to a server' },
-  { id: 'app', label: 'Application', icon: AppWindow, description: 'Local application shortcut' },
-  { id: 'password', label: 'Password', icon: Key, description: 'Password entry for a service or website' },
+  { id: 'bookmark', label: 'Link & Resource', icon: Globe, description: 'Websites, file servers (FTP/SMB), databases, and application links' },
+  { id: 'ssh', label: 'SSH Connection', icon: Terminal, description: 'Secure Shell connection to a remote server' },
+  { id: 'app', label: 'Application', icon: AppWindow, description: 'Launch a local application or script' },
+  { id: 'password', label: 'Password', icon: Key, description: 'Securely store credentials for a service' },
 ];
 
-const protocols: Protocol[] = ['https', 'http', 'ftp', 'rdp', 'vnc', 'chrome', 'edge', 'brave', 'opera', 'chatgpt', 'about', 'custom'];
+const protocols: Protocol[] = [
+  'https', 'http',
+  'ftp', 'sftp', 'ftps',
+  'smb', 'afp', 'nfs', 'file',
+  'postgres', 'mysql', 'mongodb', 'redis',
+  'vscode', 'cursor', 'jetbrains', 'git',
+  'slack', 'discord', 'zoommtg', 'tg',
+  'rdp', 'vnc',
+  'chrome', 'edge', 'brave', 'opera', 'chatgpt',
+  'about', 'custom'
+];
 
 export function AddItemModal() {
   const { isAddModalOpen, closeAddModal, createItem, groups, selectedGroupId, items, settings } = useStore();
@@ -34,7 +45,9 @@ export function AddItemModal() {
   const [path, setPath] = useState('');
   const [localAddress, setLocalAddress] = useState('');
   const [tailscaleAddress, setTailscaleAddress] = useState('');
+
   const [vpnAddress, setVpnAddress] = useState('');
+  const [activeHelp, setActiveHelp] = useState<string | null>(null);
 
   // SSH specific
   const [username, setUsername] = useState('root');
@@ -215,6 +228,17 @@ export function AddItemModal() {
     }
   };
 
+  const renderHelpButton = (key: string) => (
+    <button
+      type="button"
+      onClick={() => setActiveHelp(key)}
+      className="text-dark-400 hover:text-accent-primary transition-colors ml-2"
+      title="View Description"
+    >
+      <HelpCircle className="w-3.5 h-3.5" />
+    </button>
+  );
+
   if (!isAddModalOpen) return null;
 
   return (
@@ -361,7 +385,10 @@ export function AddItemModal() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="input-label">Protocol</label>
+                      <div className="flex items-center mb-1">
+                        <label className="input-label mb-0">Protocol</label>
+                        {renderHelpButton('protocol')}
+                      </div>
                       <select
                         value={protocol}
                         onChange={(e) => setProtocol(e.target.value as Protocol)}
@@ -372,8 +399,91 @@ export function AddItemModal() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Protocol Help Overlay */}
+                    {activeHelp && (
+                      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <div className="bg-dark-900 border border-dark-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+                          {/* Header */}
+                          <div className="flex items-center justify-between p-4 border-b border-dark-800 bg-dark-800/50">
+                            <h3 className="text-lg font-semibold text-dark-100 flex items-center gap-2">
+                              <Globe className="w-5 h-5 text-accent-primary" />
+                              Protocol Reference
+                            </h3>
+                            <button
+                              onClick={() => setActiveHelp(null)}
+                              className="text-dark-400 hover:text-dark-100 transition-colors"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 overflow-y-auto p-4">
+                            {activeHelp === 'protocol' ? (
+                              <div className="space-y-6">
+                                {PROTOCOL_CATEGORIES.map((category) => (
+                                  <div key={category.title}>
+                                    <h4 className="text-sm font-medium text-accent-primary mb-3 uppercase tracking-wider">
+                                      {category.title}
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      {category.protocols.map((p) => (
+                                        <button
+                                          key={p.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setProtocol(p.id as Protocol);
+                                            setActiveHelp(null);
+                                          }}
+                                          className="flex flex-col items-start p-3 bg-dark-800/50 hover:bg-dark-800 border border-dark-700 hover:border-accent-primary/50 rounded-lg transition-all text-left"
+                                        >
+                                          <div className="flex items-center justify-between w-full mb-1">
+                                            <span className="font-mono text-sm font-semibold text-dark-200">
+                                              {p.name}
+                                            </span>
+                                            {protocol === p.id && (
+                                              <span className="text-xs bg-accent-primary/10 text-accent-primary px-1.5 py-0.5 rounded">
+                                                Current
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-xs text-dark-400 mb-1.5">
+                                            {p.desc}
+                                          </span>
+                                          <span className="text-[10px] bg-dark-900 text-dark-500 px-1.5 py-0.5 rounded font-mono truncate w-full">
+                                            {p.usage}
+                                          </span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-dark-200 leading-relaxed">
+                                {FIELD_HELP_CONTENT[activeHelp]?.desc || 'No description available.'}
+                              </div>
+                            )}
+                          </div>
+
+                          {activeHelp === 'protocol' && (
+                            <div className="p-4 border-t border-dark-800 bg-dark-800/30 text-xs text-dark-400 text-center">
+                              Click on any protocol to select it.
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          className="absolute inset-0 -z-10"
+                          onClick={() => setActiveHelp(null)}
+                        />
+                      </div>
+                    )}
                     <div>
-                      <label className="input-label">Port</label>
+                      <div className="flex items-center mb-1">
+                        <label className="input-label mb-0">Port</label>
+                        {renderHelpButton('port')}
+                      </div>
                       <input
                         type="number"
                         value={port}
@@ -385,7 +495,12 @@ export function AddItemModal() {
                   </div>
 
                   <div>
-                    <label className="input-label">URL Path (Optional)</label>
+                    <div className="flex items-center mb-1">
+                      <label className="input-label mb-0">
+                        {['ftp', 'sftp', 'ftps'].includes(protocol) ? 'Remote Directory (Optional)' : 'URL Path (Optional)'}
+                      </label>
+                      {renderHelpButton('path')}
+                    </div>
                     <input
                       type="text"
                       value={path}
@@ -429,7 +544,10 @@ export function AddItemModal() {
                       </p>
                     </div>
                     <div>
-                      <label className="input-label text-xs">Default Address *</label>
+                      <div className="flex items-center mb-1">
+                        <label className="input-label mb-0 text-xs">Default Address *</label>
+                        {renderHelpButton('localAddress')}
+                      </div>
                       <input
                         type="text"
                         value={localAddress}
@@ -442,26 +560,36 @@ export function AddItemModal() {
                         Used when no specific network profile is selected
                       </p>
                     </div>
-                    <div>
-                      <label className="input-label text-xs">Tailscale Address (Optional)</label>
-                      <input
-                        type="text"
-                        value={tailscaleAddress}
-                        onChange={(e) => setTailscaleAddress(e.target.value)}
-                        placeholder="myserver.tailnet.ts.net"
-                        className="input-base text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="input-label text-xs">VPN Address (Optional)</label>
-                      <input
-                        type="text"
-                        value={vpnAddress}
-                        onChange={(e) => setVpnAddress(e.target.value)}
-                        placeholder="10.0.0.100 or vpn.example.com"
-                        className="input-base text-sm"
-                      />
-                    </div>
+                    {NETWORK_PROTOCOLS.includes(protocol) && (
+                      <>
+                        <div>
+                          <div className="flex items-center mb-1">
+                            <label className="input-label mb-0 text-xs">Tailscale Address (Optional)</label>
+                            {renderHelpButton('tailscaleAddress')}
+                          </div>
+                          <input
+                            type="text"
+                            value={tailscaleAddress}
+                            onChange={(e) => setTailscaleAddress(e.target.value)}
+                            placeholder="myserver.tailnet.ts.net"
+                            className="input-base text-sm"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center mb-1">
+                            <label className="input-label mb-0 text-xs">VPN Address (Optional)</label>
+                            {renderHelpButton('vpnAddress')}
+                          </div>
+                          <input
+                            type="text"
+                            value={vpnAddress}
+                            onChange={(e) => setVpnAddress(e.target.value)}
+                            placeholder="10.0.0.100 or vpn.example.com"
+                            className="input-base text-sm"
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Credentials */}
@@ -518,7 +646,10 @@ export function AddItemModal() {
                       />
                     </div>
                     <div>
-                      <label className="input-label">Port</label>
+                      <div className="flex items-center mb-1">
+                        <label className="input-label mb-0">Port</label>
+                        {renderHelpButton('port')}
+                      </div>
                       <input
                         type="number"
                         value={sshPort}
@@ -595,7 +726,10 @@ export function AddItemModal() {
 
               {selectedType === 'app' && (
                 <div>
-                  <label className="input-label">Application Path *</label>
+                  <div className="flex items-center mb-1">
+                    <label className="input-label mb-0">Application Path *</label>
+                    {renderHelpButton('appPath')}
+                  </div>
                   <div className="flex gap-2">
                     <input
                       type="text"
@@ -679,16 +813,7 @@ export function AddItemModal() {
                     </p>
                   </div>
 
-                  <div>
-                    <label className="input-label">Notes</label>
-                    <textarea
-                      value={passwordNotes}
-                      onChange={(e) => setPasswordNotes(e.target.value)}
-                      placeholder="Additional notes or information..."
-                      rows={3}
-                      className="input-base resize-none"
-                    />
-                  </div>
+
                 </>
               )}
 
@@ -904,7 +1029,7 @@ export function AddItemModal() {
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 

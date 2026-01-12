@@ -1,7 +1,17 @@
 // Item Types
 export type ItemType = 'bookmark' | 'ssh' | 'app' | 'password';
-export type Protocol = 'http' | 'https' | 'ssh' | 'rdp' | 'vnc' | 'ftp' | 'chrome' | 'edge' | 'brave' | 'opera' | 'chatgpt' | 'about' | 'mailto' | 'custom';
+export type Protocol = 'http' | 'https' | 'ssh' | 'rdp' | 'vnc' | 'ftp' | 'sftp' | 'ftps' | 'smb' | 'afp' | 'nfs' | 'file' | 'postgres' | 'mysql' | 'mongodb' | 'redis' | 'vscode' | 'cursor' | 'jetbrains' | 'git' | 'slack' | 'discord' | 'zoommtg' | 'tg' | 'chrome' | 'edge' | 'brave' | 'opera' | 'chatgpt' | 'about' | 'mailto' | 'custom';
 export type NetworkProfile = 'local' | 'tailscale' | 'vpn' | 'custom';
+
+export const NETWORK_PROTOCOLS: Protocol[] = [
+  'http', 'https',
+  'ftp', 'sftp', 'ftps',
+  'smb', 'afp', 'nfs',
+  'rdp', 'vnc',
+  'postgres', 'mysql', 'mongodb', 'redis',
+  'git',
+  'ssh'
+];
 
 // Core Item Interface
 export interface Item {
