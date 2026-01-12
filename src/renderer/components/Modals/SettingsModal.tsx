@@ -1585,7 +1585,7 @@ export function SettingsModal() {
                     🚀
                   </div>
                   <h3 className="text-2xl font-bold gradient-text mb-2">LaunchIt</h3>
-                  <p className="text-dark-400 mb-1">Version 1.3.0</p>
+                  <p className="text-dark-400 mb-1">Version 1.3.1</p>
                   <p className="text-sm text-dark-500 mb-4">
                     A powerful bookmark and app launcher
                   </p>
