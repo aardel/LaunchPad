@@ -199,7 +199,7 @@ export function UnlockModal() {
 
           {/* Version Label */}
           <div className="absolute bottom-4 right-4 text-xs text-dark-500 font-mono opacity-50">
-            v1.3.1
+            v1.3.2
           </div>
         </div>
       </div>
@@ -283,7 +283,7 @@ export function UnlockModal() {
 
       {/* Version Label */}
       <div className="absolute bottom-4 right-4 text-xs text-dark-500 font-mono opacity-50">
-        v1.3.1
+        v1.3.2
       </div>
     </div>
   );
