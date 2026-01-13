@@ -8,6 +8,7 @@ import { TailscaleService } from './services/tailscale';
 import { LauncherService } from './services/launcher';
 import { EncryptionService } from './services/encryption';
 import { BrowserService, Browser } from './services/browsers';
+import { NetworkDiscoveryService } from './services/discovery';
 import { ImportExportService, ExportData } from './services/importExport';
 import { BrowserBookmarksService, BrowserWithBookmarks, BrowserBookmark } from './services/browserBookmarks';
 import { FaviconService } from './services/favicon';
@@ -27,6 +28,9 @@ import {
   NetworkProfile,
   AppSettings,
   IPCResponse,
+  DetectedTerminal,
+  DetectedBrowser,
+  DetectedFtpClient,
 } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -43,6 +47,7 @@ let healthCheckService: HealthCheckService;
 let syncService: SyncService;
 let extensionServer: ExtensionServer;
 let aiService: AIService;
+let networkDiscovery: NetworkDiscoveryService;
 let backupService: BackupService | null = null;
 let trayService: TrayService | null = null;
 
@@ -118,6 +123,7 @@ async function initializeServices() {
 
   tailscale = new TailscaleService();
   browserService = new BrowserService();
+  networkDiscovery = new NetworkDiscoveryService(); // Added this line
   faviconService = new FaviconService();
   healthCheckService = new HealthCheckService();
   encryption = new EncryptionService();
@@ -128,7 +134,7 @@ async function initializeServices() {
   // Initialize AI service
   const settings = db.getSettings();
   aiService = new AIService({
-    apiKey: settings.groqApiKey,
+    apiKey: settings.groqApiKey || undefined,
     enabled: settings.aiEnabled || false,
   });
 
@@ -529,7 +535,7 @@ function setupIPC() {
 
       // Update AI service if API key changed
       if (settings.groqApiKey !== undefined) {
-        aiService.setApiKey(settings.groqApiKey);
+        aiService.setApiKey(settings.groqApiKey || undefined);
       }
 
       // Update AI service enabled state
@@ -624,6 +630,46 @@ function setupIPC() {
         return { success: true, data: { timestamp: backup.timestamp } };
       }
       return { success: true, data: null };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('backup:getConfig', async (): Promise<IPCResponse<{ path: string }>> => {
+    try {
+      const path = backupService?.getBackupsDirectory() || '';
+      return { success: true, data: { path } };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle('backup:create', async (): Promise<IPCResponse<{ path: string; timestamp: string }>> => {
+    try {
+      if (!backupService) {
+        return { success: false, error: 'Backup service not initialized' };
+      }
+
+      const database = getDb();
+      const groups = database.getAllGroups();
+      const items = database.getAllItems();
+      const settings = database.getSettings();
+
+      const result = await backupService.createBackup(groups, items, settings.backupRetentionCount);
+
+      if (result.success && result.path) {
+        const timestamp = new Date().toISOString();
+        database.updateSettings({ lastAutoBackup: timestamp });
+
+        // Notify renderer
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('backup:created', { timestamp });
+        }
+
+        return { success: true, data: { path: result.path, timestamp } };
+      } else {
+        return { success: false, error: result.error || 'Backup failed' };
+      }
     } catch (error) {
       return { success: false, error: String(error) };
     }
@@ -786,6 +832,72 @@ function setupIPC() {
     return { success: true, data: result.filePaths[0] };
   });
 
+  ipcMain.handle('system:getDetectedTerminals', async () => {
+    try {
+      const terminals = await launcher.detectInstalledTerminals();
+
+      // Update the response type to include DetectedTerminal
+      return {
+        success: true,
+        data: terminals
+      } as IPCResponse<DetectedTerminal[]>;
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('system:getDetectedFtpClients', async () => {
+    try {
+      const clients = await launcher.detectInstalledFtpClients();
+      return {
+        success: true,
+        data: clients
+      } as IPCResponse<DetectedFtpClient[]>;
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('system:getDetectedBrowsers', async () => {
+    try {
+      const browsers = await browserService.getDetectedBrowsers();
+
+      return {
+        success: true,
+        data: browsers
+      } as IPCResponse<DetectedBrowser[]>;
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('network:scan', async (_, durationMs?: number) => {
+    try {
+      const shares = await networkDiscovery.scanForShares(durationMs);
+      return { success: true, data: shares };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('network:stopScan', async () => {
+    try {
+      networkDiscovery.stopScanning();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('network:scanPorts', async (_, host: string, type: 'basic' | 'deep' | number[]) => {
+    try {
+      const ports = await networkDiscovery.scanPorts(host, type);
+      return { success: true, data: ports };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('system:openExtensionFolder', async (_, browser: 'chrome' | 'safari'): Promise<IPCResponse<void>> => {
     try {
       const extensionPath = browser === 'chrome'
@@ -827,7 +939,17 @@ function setupIPC() {
       const database = getDb();
       const groups = database.getAllGroups();
       const items = database.getAllItems();
-      const result = await importExport.exportData(groups, items);
+      const settings = database.getSettings();
+
+      let encryptionSettings;
+      if (settings.encryptionSalt && settings.encryptionVerification) {
+        encryptionSettings = {
+          salt: settings.encryptionSalt,
+          verification: settings.encryptionVerification
+        };
+      }
+
+      const result = await importExport.exportData(groups, items, encryptionSettings);
 
       if (result.success && result.path) {
         return { success: true, data: { path: result.path } };
@@ -912,6 +1034,8 @@ function setupIPC() {
     safeGroups: Group[];
     safeItems: AnyItem[];
     importData: ExportData;
+    encrypted?: boolean;
+    requiresPassword?: boolean;
   }>> => {
     try {
       const result = await importExport.importData();
@@ -976,6 +1100,12 @@ function setupIPC() {
           safeGroups,
           safeItems,
           importData: result.data,
+          encrypted: !!result.data.encryption,
+          requiresPassword: !!result.data.encryption && result.data.items.some(i =>
+            (i.type === 'bookmark' || i.type === 'ssh' || i.type === 'password') &&
+            (i as any).credentials &&
+            ((i as any).credentials.username || (i as any).credentials.password || (i as any).credentials.notes)
+          ),
         },
       };
     } catch (error) {
@@ -989,12 +1119,67 @@ function setupIPC() {
     importData: ExportData,
     safeGroups: Group[],
     safeItems: AnyItem[],
-    resolutions: Record<string, 'merge' | 'replace' | 'skip'>
+    resolutions: Record<string, 'merge' | 'replace' | 'skip'>,
+    password?: string
   ): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> => {
     try {
       const database = getDb();
       const existingGroups = database.getAllGroups();
       const existingItems = database.getAllItems();
+
+      // Initialize decryption service if needed
+      let importEncryption: EncryptionService | null = null;
+      if (password && importData.encryption) {
+        try {
+          importEncryption = new EncryptionService();
+          await importEncryption.setMasterPassword(password, importData.encryption.salt);
+          const isValid = await importEncryption.verifyPassword(
+            password,
+            importData.encryption.salt,
+            importData.encryption.verification
+          );
+
+          if (!isValid) {
+            return { success: false, error: 'Invalid password for backup file' };
+          }
+        } catch (error) {
+          return { success: false, error: 'Failed to verify backup password' };
+        }
+      }
+
+      // Helper to process item credentials
+      const processItemCredentials = (item: AnyItem) => {
+        if (!importEncryption || !encryption.isUnlocked()) return item;
+
+        const credentialItem = item as any;
+        if (!credentialItem.credentials) return item;
+
+        // Clone item to avoid mutating original
+        const processedItem = { ...item } as any;
+        const newCredentials: any = {};
+
+        try {
+          // Decrypt with import key, then encrypt with current key
+          if (credentialItem.credentials.username) {
+            const dec = importEncryption.decrypt(credentialItem.credentials.username);
+            newCredentials.username = encryption.encrypt(dec);
+          }
+          if (credentialItem.credentials.password) {
+            const dec = importEncryption.decrypt(credentialItem.credentials.password);
+            newCredentials.password = encryption.encrypt(dec);
+          }
+          if (credentialItem.credentials.notes) {
+            const dec = importEncryption.decrypt(credentialItem.credentials.notes);
+            newCredentials.notes = encryption.encrypt(dec);
+          }
+          processedItem.credentials = newCredentials;
+        } catch (e) {
+          console.error(`Failed to re-encrypt item ${item.name}`, e);
+          // Keep original credentials if failed (though they likely won't work)
+        }
+
+        return processedItem;
+      };
 
       const groupIdMap = new Map<string, string>();
       let groupsImported = 0;
@@ -1085,21 +1270,26 @@ function setupIPC() {
           // Import all items from imported group
           const itemsToImport = importData.items.filter(i => i.groupId === importedGroupId);
           for (const item of itemsToImport) {
+            const processedItem = processItemCredentials(item);
             database.createItem({
-              type: item.type,
-              name: item.name,
-              description: item.description,
-              icon: item.icon,
-              color: item.color,
+              type: processedItem.type,
+              name: processedItem.name,
+              description: processedItem.description,
+              icon: processedItem.icon,
+              color: processedItem.color,
               groupId: existingGroup.id,
-              tags: item.tags,
-              protocol: (item as any).protocol,
-              port: (item as any).port,
-              path: (item as any).path,
-              networkAddresses: (item as any).networkAddresses,
-              username: (item as any).username,
-              appPath: (item as any).appPath,
-              arguments: (item as any).arguments,
+              tags: processedItem.tags,
+              protocol: (processedItem as any).protocol,
+              port: (processedItem as any).port,
+              path: (processedItem as any).path,
+              networkAddresses: (processedItem as any).networkAddresses,
+              username: (processedItem as any).username,
+              appPath: (processedItem as any).appPath,
+              arguments: (processedItem as any).arguments,
+              credentials: (processedItem as any).credentials,
+              service: (processedItem as any).service,
+              url: (processedItem as any).url,
+              sshKey: (processedItem as any).sshKey,
             });
             itemsImported++;
           }
@@ -1113,25 +1303,26 @@ function setupIPC() {
           const uniqueNewItems = importedItems.filter(item => !existingKeys.has(getItemKey(item)));
 
           for (const item of uniqueNewItems) {
+            const processedItem = processItemCredentials(item);
             database.createItem({
-              type: item.type,
-              name: item.name,
-              description: item.description,
-              icon: item.icon,
-              color: item.color,
+              type: processedItem.type,
+              name: processedItem.name,
+              description: processedItem.description,
+              icon: processedItem.icon,
+              color: processedItem.color,
               groupId: existingGroup.id,
-              tags: item.tags,
-              protocol: (item as any).protocol,
-              port: (item as any).port,
-              path: (item as any).path,
-              networkAddresses: (item as any).networkAddresses,
-              username: (item as any).username,
-              appPath: (item as any).appPath,
-              arguments: (item as any).arguments,
-              credentials: (item as any).credentials,
-              service: (item as any).service,
-              url: (item as any).url,
-              sshKey: (item as any).sshKey,
+              tags: processedItem.tags,
+              protocol: (processedItem as any).protocol,
+              port: (processedItem as any).port,
+              path: (processedItem as any).path,
+              networkAddresses: (processedItem as any).networkAddresses,
+              username: (processedItem as any).username,
+              appPath: (processedItem as any).appPath,
+              arguments: (processedItem as any).arguments,
+              credentials: (processedItem as any).credentials,
+              service: (processedItem as any).service,
+              url: (processedItem as any).url,
+              sshKey: (processedItem as any).sshKey,
             });
             itemsImported++;
           }
@@ -1151,7 +1342,18 @@ function setupIPC() {
     }
   });
 
-  ipcMain.handle('data:importSyncFile', async (): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> => {
+  ipcMain.handle('data:importSyncFile', async (): Promise<IPCResponse<{
+    conflicts: Array<{
+      importedGroup: Group;
+      existingGroup: Group;
+      existingItemCount: number;
+    }>;
+    safeGroups: Group[];
+    safeItems: AnyItem[];
+    importData: ExportData;
+    encrypted?: boolean;
+    requiresPassword?: boolean;
+  }>> => {
     try {
       const result = await importExport.importSyncFile();
 
@@ -1160,56 +1362,69 @@ function setupIPC() {
       }
 
       const database = getDb();
+      const existingGroups = database.getAllGroups();
+      const existingItems = database.getAllItems();
 
-      // Import groups first (to get IDs)
-      const groupIdMap = new Map<string, string>();
-      for (const group of result.data.groups) {
-        const newGroup = database.createGroup({
-          name: group.name,
-          icon: group.icon,
-          color: group.color,
-          defaultProfile: group.defaultProfile,
-          batchOpenDelay: group.batchOpenDelay,
-        });
-        groupIdMap.set(group.id, newGroup.id);
-      }
+      // Analyze for conflicts
+      const conflicts: Array<{
+        importedGroup: Group;
+        existingGroup: Group;
+        existingItemCount: number;
+      }> = [];
+      const safeGroups: Group[] = [];
+      const safeItems: AnyItem[] = [];
 
-      // Import items with mapped group IDs
-      let itemsImported = 0;
-      for (const item of result.data.items) {
-        const newGroupId = groupIdMap.get(item.groupId);
-        if (!newGroupId) continue;
+      // Create a map of group IDs to item counts
+      const groupItemCounts = new Map<string, number>();
+      existingItems.forEach(item => {
+        const count = groupItemCounts.get(item.groupId) || 0;
+        groupItemCounts.set(item.groupId, count + 1);
+      });
 
-        database.createItem({
-          type: item.type,
-          name: item.name,
-          description: item.description,
-          icon: item.icon,
-          color: item.color,
-          groupId: newGroupId,
-          tags: item.tags,
-          protocol: (item as any).protocol,
-          port: (item as any).port,
-          path: (item as any).path,
-          networkAddresses: (item as any).networkAddresses,
-          username: (item as any).username,
-          appPath: (item as any).appPath,
-          arguments: (item as any).arguments,
-          credentials: (item as any).credentials,
-          service: (item as any).service,
-          url: (item as any).url,
-          sshKey: (item as any).sshKey,
-        });
-        itemsImported++;
-      }
+      // Check each imported group for conflicts
+      result.data.groups.forEach(importedGroup => {
+        const existingGroup = existingGroups.find(
+          g => g.name.toLowerCase() === importedGroup.name.toLowerCase()
+        );
 
-      triggerSync();
+        if (existingGroup) {
+          const itemCount = groupItemCounts.get(existingGroup.id) || 0;
+
+          if (itemCount > 0) {
+            // Conflict: existing group has items
+            conflicts.push({
+              importedGroup,
+              existingGroup,
+              existingItemCount: itemCount,
+            });
+          } else {
+            // Safe: existing group is empty, can be overwritten
+            safeGroups.push(importedGroup);
+            const groupItems = result.data?.items.filter(i => i.groupId === importedGroup.id) || [];
+            safeItems.push(...groupItems);
+          }
+        } else {
+          // Safe: no existing group with this name
+          safeGroups.push(importedGroup);
+          const groupItems = result.data?.items.filter(i => i.groupId === importedGroup.id) || [];
+          safeItems.push(...groupItems);
+        }
+      });
+
       return {
         success: true,
         data: {
-          groupsCount: result.data.groups.length,
-          itemsCount: itemsImported,
-        }
+          conflicts,
+          safeGroups,
+          safeItems,
+          importData: result.data,
+          encrypted: !!result.data.encryption,
+          requiresPassword: !!result.data.encryption && result.data.items.some(i =>
+            (i.type === 'bookmark' || i.type === 'ssh' || i.type === 'password') &&
+            (i as any).credentials &&
+            ((i as any).credentials.username || (i as any).credentials.password || (i as any).credentials.notes)
+          ),
+        },
       };
     } catch (error) {
       return { success: false, error: String(error) };
@@ -1617,12 +1832,21 @@ function setupIPC() {
       const groups = database.getAllGroups();
       const items = database.getAllItems();
 
+      let encryptionSettings;
+      if (settings.encryptionSalt && settings.encryptionVerification) {
+        encryptionSettings = {
+          salt: settings.encryptionSalt,
+          verification: settings.encryptionVerification
+        };
+      }
+
       const result = await syncService.upload(
         settings.syncUrl,
         settings.syncUsername,
         settings.syncPassword,
         groups,
-        items
+        items,
+        encryptionSettings
       );
 
       if (result.success) {

@@ -177,7 +177,7 @@ export class DatabaseService {
         aiEnabled: false,
         advancedMode: false,
         smartRoutingEnabled: true, // Let's default it to true since it's a "killer" feature
-        groqApiKey: undefined,
+        groqApiKey: null,
         globalSearchHotkey: process.platform === 'darwin' ? 'Option+Space' : 'Alt+Space',
         keyboardShortcuts: {
           newItem: 'Meta+N',
@@ -203,7 +203,8 @@ export class DatabaseService {
       };
 
       for (const [key, value] of Object.entries(defaultSettings)) {
-        this.db!.run('INSERT INTO settings (key, value) VALUES (?, ?)', [key, JSON.stringify(value)]);
+        const stringValue = value === undefined ? null : JSON.stringify(value);
+        this.db!.run('INSERT INTO settings (key, value) VALUES (?, ?)', [key, stringValue]);
       }
     }
 

@@ -7,6 +7,10 @@ export interface ExportData {
   exportedAt: string;
   groups: Group[];
   items: AnyItem[];
+  encryption?: {
+    salt: string;
+    verification: string;
+  };
 }
 
 // Sync format (used by WebDAV sync)
@@ -15,10 +19,14 @@ export interface SyncData {
   lastSync: string;
   groups: Group[];
   items: AnyItem[];
+  encryption?: {
+    salt: string;
+    verification: string;
+  };
 }
 
 export class ImportExportService {
-  async exportData(groups: Group[], items: AnyItem[]): Promise<{ success: boolean; path?: string; error?: string }> {
+  async exportData(groups: Group[], items: AnyItem[], encryption?: { salt: string; verification: string }): Promise<{ success: boolean; path?: string; error?: string }> {
     try {
       const result = await dialog.showSaveDialog({
         title: 'Export LaunchIt Data',
@@ -38,6 +46,7 @@ export class ImportExportService {
         exportedAt: new Date().toISOString(),
         groups,
         items,
+        encryption,
       };
 
       writeFileSync(result.filePath, JSON.stringify(exportData, null, 2), 'utf-8');
@@ -76,6 +85,7 @@ export class ImportExportService {
           exportedAt: parsed.lastSync,
           groups: parsed.groups || [],
           items: parsed.items || [],
+          encryption: parsed.encryption,
         };
       } else if (typeof parsed.version === 'string' && parsed.exportedAt) {
         // Export format - use as is
@@ -124,6 +134,7 @@ export class ImportExportService {
           exportedAt: parsed.lastSync,
           groups: parsed.groups || [],
           items: parsed.items || [],
+          encryption: parsed.encryption,
         };
       } else if (typeof parsed.version === 'string' && parsed.exportedAt) {
         // Export format - use as is

@@ -1,45 +1,75 @@
 import { useState, useEffect } from 'react';
 import {
-  X, RefreshCw, Download, Upload, FileUp, Check, Globe,
-  Settings, Wifi, Database, Info, Terminal, Palette, Image, Loader2, Shield,
-  Lock, Eye, EyeOff, AlertCircle, Keyboard, Command, Cloud, CloudOff, CheckCircle2,
-  Sparkles, Key, Archive, Folder, FolderOpen
+  Settings,
+  X,
+  Shield,
+  Globe,
+  Database,
+  Check,
+  Command,
+  Cloud,
+  AlertCircle,
+  Download,
+  Upload,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  Loader2,
+  FileUp,
+  Terminal,
+  Palette,
+  Wifi,
+  Keyboard,
+  Sparkles,
+  Info,
+  Archive,
+  Image,
+  Lock,
+  Server,
+  LayoutGrid,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { ImportBrowserModal } from './ImportBrowserModal';
 import { KeyboardShortcutRecorder } from '../KeyboardShortcutRecorder';
 import { ImportConflictModal, type GroupConflict } from './ImportConflictModal';
-import type { NetworkProfile } from '@shared/types';
+import type { NetworkProfile, AppSettings, DetectedTerminal, DetectedBrowser, DetectedFtpClient } from '@shared/types';
 import type { ExportData } from '../../../main/services/importExport';
 
-type SettingsTab = 'general' | 'security' | 'network' | 'terminal' | 'shortcuts' | 'data' | 'ai' | 'extensions' | 'about';
+type SettingsTab = 'general' | 'security' | 'network' | 'browsers' | 'terminal' | 'ftp' | 'shortcuts' | 'data' | 'ai' | 'extensions' | 'about';
 
 const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
   { id: 'general', label: 'General', icon: Palette },
   { id: 'security', label: 'Security', icon: Shield },
   { id: 'network', label: 'Network', icon: Wifi },
+  { id: 'browsers', label: 'Browsers', icon: Globe },
   { id: 'terminal', label: 'Terminal', icon: Terminal },
+  { id: 'ftp', label: 'FTP Clients', icon: Server },
   { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
   { id: 'data', label: 'Data', icon: Database },
   { id: 'ai', label: 'AI Features', icon: Sparkles },
-  { id: 'extensions', label: 'Extensions', icon: Globe },
+  { id: 'extensions', label: 'Extensions', icon: LayoutGrid },
   { id: 'about', label: 'About', icon: Info },
 ];
 
-const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-const cmdKey = isMac ? '⌘' : 'Ctrl';
-
-const SHORTCUTS = [
-  { keys: [`${cmdKey}`, 'N'], description: 'New item' },
-  { keys: [`${cmdKey}`, 'G'], description: 'New group' },
-  { keys: [`${cmdKey}`, ','], description: 'Open settings' },
-  { keys: [`${cmdKey}`, 'K'], description: 'Focus search' },
-  { keys: [`${cmdKey}`, 'L'], description: 'Lock vault' },
-  { keys: ['1-9'], description: 'Select group' },
-  { keys: ['0'], description: 'Show all groups' },
-  { keys: ['Esc'], description: 'Close modal / Clear search' },
-  { keys: [isMac ? '⌥' : 'Alt', 'Space'], description: 'Global Search (Quick Launcher)' },
-];
+const DEFAULT_KEYBOARD_SHORTCUTS = {
+  newItem: 'Meta+N',
+  newGroup: 'Meta+G',
+  openSettings: 'Meta+,',
+  focusSearch: 'Meta+F',
+  lockVault: 'Meta+L',
+  commandPalette: 'Meta+K',
+  selectGroup1: '1',
+  selectGroup2: '2',
+  selectGroup3: '3',
+  selectGroup4: '4',
+  selectGroup5: '5',
+  selectGroup6: '6',
+  selectGroup7: '7',
+  selectGroup8: '8',
+  selectGroup9: '9',
+  showAllGroups: '0',
+};
 
 const UpdateChecker = () => {
   const [status, setStatus] = useState<any>({ status: 'idle' });
@@ -133,7 +163,7 @@ export function SettingsModal() {
   const { isSettingsOpen, closeSettings, settings, tailscaleStatus, refreshTailscaleStatus, groups, loadData, fetchFavicons, isFetchingFavicons, faviconProgress, isVaultSetup, lockVault } = useStore();
 
   // Helper to update settings and refresh store
-  const updateSettings = async (updates: Partial<typeof settings>) => {
+  const updateSettings = async (updates: Partial<AppSettings>) => {
     // Ensure keyboardShortcuts are fully defined if being updated
     if (updates.keyboardShortcuts) {
       const currentShortcuts = (settings?.keyboardShortcuts || {}) as any;
@@ -165,6 +195,9 @@ export function SettingsModal() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [defaultProfile, setDefaultProfile] = useState<NetworkProfile>('local');
   const [defaultTerminal, setDefaultTerminal] = useState('Terminal');
+  const [detectedTerminals, setDetectedTerminals] = useState<DetectedTerminal[]>([]);
+  const [detectedBrowsers, setDetectedBrowsers] = useState<DetectedBrowser[]>([]);
+  const [detectedFtpClients, setDetectedFtpClients] = useState<DetectedFtpClient[]>([]);
   const [isRefreshingTailscale, setIsRefreshingTailscale] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
@@ -172,6 +205,8 @@ export function SettingsModal() {
   const [isBrowserImportOpen, setIsBrowserImportOpen] = useState(false);
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
   const [importConflicts, setImportConflicts] = useState<GroupConflict[]>([]);
+  const [isImportPasswordModalOpen, setIsImportPasswordModalOpen] = useState(false);
+  const [importPassword, setImportPassword] = useState('');
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [deleteAllPassword, setDeleteAllPassword] = useState('');
   const [deleteAllError, setDeleteAllError] = useState<string | null>(null);
@@ -179,6 +214,7 @@ export function SettingsModal() {
     importData: ExportData;
     safeGroups: any[];
     safeItems: any[];
+    requiresPassword?: boolean;
   } | null>(null);
 
   // Sync state
@@ -192,6 +228,10 @@ export function SettingsModal() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  // Backup state
+  const [resolvedBackupPath, setResolvedBackupPath] = useState<string>('');
+
 
   // Security state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -216,9 +256,26 @@ export function SettingsModal() {
   const [backupPath, setBackupPath] = useState('');
 
   // Hotkey state
-  const [globalSearchHotkey, setGlobalSearchHotkey] = useState('Option+Space');
+  // Terminal state
 
   useEffect(() => {
+    // Fetch detected terminals
+    window.api.system.getDetectedTerminals().then((res: import('@shared/types').IPCResponse<DetectedTerminal[]>) => {
+      if (res.success && res.data) {
+        setDetectedTerminals(res.data);
+      }
+    });
+    window.api.system.getDetectedBrowsers().then((res: import('@shared/types').IPCResponse<DetectedBrowser[]>) => {
+      if (res.success && res.data) {
+        setDetectedBrowsers(res.data);
+      }
+    });
+    window.api.system.getDetectedFtpClients().then((res: import('@shared/types').IPCResponse<DetectedFtpClient[]>) => {
+      if (res.success && res.data) {
+        setDetectedFtpClients(res.data);
+      }
+    });
+
     if (settings) {
       setDefaultProfile(settings.defaultProfile);
       setDefaultTerminal(settings.defaultTerminal || 'Terminal');
@@ -234,7 +291,6 @@ export function SettingsModal() {
       setShowApiKey(false);
       setGroqApiKey(settings.groqApiKey || '');
       setShowApiKey(false);
-      setGlobalSearchHotkey(settings.globalSearchHotkey || (isMac ? 'Option+Space' : 'Alt+Space'));
       setBackupEnabled(settings.backupEnabled !== false); // Default to true if undefined
       setBackupFrequency(settings.backupFrequency || 'daily');
       setBackupRetention(settings.backupRetentionCount || 30);
@@ -244,6 +300,19 @@ export function SettingsModal() {
       setSelectedImportGroup(groups[0].id);
     }
   }, [settings, groups, selectedImportGroup]);
+
+  // Fetch backup config when tab changes
+  useEffect(() => {
+    if (activeTab === 'data') {
+      const fetchBackupConfig = async () => {
+        const res = await window.api.backup.getConfig();
+        if (res.success && res.data) {
+          setResolvedBackupPath(res.data.path);
+        }
+      };
+      fetchBackupConfig();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (isSettingsOpen) {
@@ -324,6 +393,25 @@ export function SettingsModal() {
     try {
       const result = await window.api.data.analyzeImport();
       if (result.success && result.data) {
+        // Check if encryption password is required
+        const importData = result.data as any; // Cast to access extra fields
+        if (importData.requiresPassword) {
+          setPendingImportData({
+            importData: result.data.importData,
+            safeGroups: result.data.safeGroups,
+            safeItems: result.data.safeItems,
+            requiresPassword: true,
+          });
+
+          if (result.data.conflicts.length > 0) {
+            setImportConflicts(result.data.conflicts);
+          }
+
+          setIsImportPasswordModalOpen(true);
+          setImportStatus(null);
+          return;
+        }
+
         if (result.data.conflicts.length > 0) {
           // Show conflict modal
           setImportConflicts(result.data.conflicts);
@@ -368,7 +456,8 @@ export function SettingsModal() {
         pendingImportData.importData,
         pendingImportData.safeGroups,
         pendingImportData.safeItems,
-        resolutionsObj
+        resolutionsObj,
+        importPassword // Pass the password if provided
       );
       if (result.success && result.data) {
         setImportStatus(`Imported ${result.data.groupsCount} groups and ${result.data.itemsCount} items`);
@@ -380,8 +469,44 @@ export function SettingsModal() {
     } catch (error) {
       setImportStatus('Import failed');
     } finally {
-      setPendingImportData(null);
+      if (!importConflicts || importConflicts.length === 0) {
+        setPendingImportData(null);
+      }
       setImportConflicts([]);
+      setImportPassword('');
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    setIsImportPasswordModalOpen(false);
+
+    // If there were conflicts, now show the conflict modal
+    if (importConflicts.length > 0) {
+      setIsConflictModalOpen(true);
+    } else if (pendingImportData) {
+      // Direct import with password
+      setImportStatus('Importing...');
+      try {
+        const result = await window.api.data.importWithResolutions(
+          pendingImportData.importData,
+          pendingImportData.safeGroups,
+          pendingImportData.safeItems,
+          {},
+          importPassword
+        );
+        if (result.success && result.data) {
+          setImportStatus(`Imported ${result.data.groupsCount} groups and ${result.data.itemsCount} items`);
+          await loadData();
+          setTimeout(() => setImportStatus(null), 3000);
+        } else {
+          setImportStatus(result.error || 'Import failed');
+        }
+      } catch (error) {
+        setImportStatus('Import failed');
+      } finally {
+        setPendingImportData(null);
+        setImportPassword('');
+      }
     }
   };
 
@@ -479,6 +604,49 @@ export function SettingsModal() {
         onClick={closeSettings}
       />
 
+      {/* Password Modal */}
+      {isImportPasswordModalOpen && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-dark-950/50 backdrop-blur-sm">
+          <div className="bg-dark-900 border border-dark-700 rounded-xl p-6 w-full max-w-sm shadow-2xl animate-scale-in">
+            <h3 className="text-lg font-semibold text-dark-100 mb-2">Decrypt Backup</h3>
+            <p className="text-sm text-dark-400 mb-4">
+              This backup contains encrypted passwords. Please enter the master password used when creating this backup.
+            </p>
+            <input
+              type="password"
+              value={importPassword}
+              onChange={(e) => setImportPassword(e.target.value)}
+              className="input-base mb-4"
+              placeholder="Enter backup password"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handlePasswordSubmit();
+              }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => {
+                  setIsImportPasswordModalOpen(false);
+                  setImportPassword('');
+                  setPendingImportData(null);
+                  setImportConflicts([]);
+                }}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePasswordSubmit}
+                disabled={!importPassword}
+                className="btn-primary"
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal */}
       <div className="relative w-full max-w-2xl bg-dark-900 border border-dark-700 rounded-2xl shadow-2xl animate-scale-in overflow-hidden flex flex-col" style={{ height: '600px' }}>
         {/* Header */}
@@ -509,7 +677,8 @@ export function SettingsModal() {
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors
                            ${activeTab === tab.id
                       ? 'bg-accent-primary/10 text-accent-primary border-r-2 border-accent-primary'
-                      : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'}`}
+                      : 'text-dark-400 hover:text-dark-200 hover:bg-dark-800'
+                    } `}
                 >
                   <Icon className="w-4 h-4" />
                   {tab.label}
@@ -523,6 +692,9 @@ export function SettingsModal() {
             {/* General Tab */}
             {activeTab === 'general' && (
               <div className="space-y-6">
+                {/* Default Browser */}
+                {/* Content moved to Browsers tab */}
+
                 {/* Favicons */}
                 <div>
                   <h3 className="text-lg font-medium text-dark-100 mb-4">Website Icons</h3>
@@ -583,6 +755,159 @@ export function SettingsModal() {
               </div>
             )}
 
+            {/* Browsers Tab */}
+            {activeTab === 'browsers' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">Default Browser</h3>
+                  <div className="space-y-4">
+                    {/* Installed Browsers */}
+                    <div className="bg-dark-800/50 rounded-xl overflow-hidden">
+                      <div className="p-3 border-b border-dark-800/50">
+                        <span className="text-xs font-medium text-dark-400 uppercase tracking-wider">Installed Browsers</span>
+                      </div>
+                      <div className="divide-y divide-dark-800/50">
+                        {detectedBrowsers.filter(b => b.isInstalled).map((browser) => (
+                          <label key={browser.id} className="flex items-center justify-between p-4 cursor-pointer hover:bg-dark-800/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xl">{browser.icon}</span>
+                              <div>
+                                <p className="text-sm font-medium text-dark-100">{browser.name}</p>
+                                <p className="text-xs text-dark-400">{browser.path}</p>
+                              </div>
+                            </div>
+                            <div className="relative flex items-center">
+                              <input
+                                type="radio"
+                                name="defaultBrowser"
+                                value={browser.id}
+                                checked={settings?.defaultBrowser === browser.id}
+                                onChange={(e) => updateSettings({ defaultBrowser: e.target.value })}
+                                className="peer sr-only"
+                              />
+                              <div className="w-5 h-5 rounded-full border border-dark-500 peer-checked:border-accent-primary peer-checked:bg-accent-primary transition-all">
+                                <div className="w-full h-full flex items-center justify-center opacity-0 peer-checked:opacity-100 transition-opacity">
+                                  <Check className="w-3 h-3 text-white" />
+                                </div>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* More Browsers */}
+                    {detectedBrowsers.some(b => !b.isInstalled) && (
+                      <div className="bg-dark-800/50 rounded-xl overflow-hidden">
+                        <div className="p-3 border-b border-dark-800/50">
+                          <span className="text-xs font-medium text-dark-400 uppercase tracking-wider">More Browsers</span>
+                        </div>
+                        <div className="divide-y divide-dark-800/50">
+                          {detectedBrowsers.filter(b => !b.isInstalled).map((browser) => (
+                            <div key={browser.id} className="flex items-center justify-between p-4 bg-dark-800/20 opacity-70 hover:opacity-100 transition-all">
+                              <div className="flex items-center gap-3">
+                                <span className="text-xl grayscale">{browser.icon}</span>
+                                <div>
+                                  <p className="text-sm font-medium text-dark-200">{browser.name}</p>
+                                  <p className="text-xs text-dark-500">{browser.description}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => window.api.launch.url(browser.downloadUrl)}
+                                className="btn-secondary text-xs px-3 py-1.5 h-auto opacity-70 hover:opacity-100"
+                              >
+                                <Download className="w-3 h-3 mr-2" />
+                                Get
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* FTP Tab */}
+            {activeTab === 'ftp' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">Steps FTP Client</h3>
+                  <div className="space-y-4">
+                    {/* Installed FTP Clients */}
+                    <div className="bg-dark-800/50 rounded-xl overflow-hidden">
+                      <div className="p-3 border-b border-dark-800/50">
+                        <span className="text-xs font-medium text-dark-400 uppercase tracking-wider">Installed Clients</span>
+                      </div>
+                      <div className="divide-y divide-dark-800/50">
+                        {detectedFtpClients.filter(c => c.isInstalled).map((client) => (
+                          <label key={client.id} className="flex items-center justify-between p-4 cursor-pointer hover:bg-dark-800/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                              <Server className="w-5 h-5 text-dark-200" />
+                              <div>
+                                <p className="text-sm font-medium text-dark-100">{client.name}</p>
+                                <p className="text-xs text-dark-400">{client.path}</p>
+                              </div>
+                            </div>
+                            <div className="relative flex items-center">
+                              <input
+                                type="radio"
+                                name="defaultFtpClient"
+                                value={client.id}
+                                checked={settings?.defaultFtpClient === client.id}
+                                onChange={(e) => updateSettings({ defaultFtpClient: e.target.value })}
+                                className="peer sr-only"
+                              />
+                              <div className="w-5 h-5 rounded-full border border-dark-500 peer-checked:border-accent-primary peer-checked:bg-accent-primary transition-all">
+                                <div className="w-full h-full flex items-center justify-center opacity-0 peer-checked:opacity-100 transition-opacity">
+                                  <Check className="w-3 h-3 text-white" />
+                                </div>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                        {detectedFtpClients.filter(c => c.isInstalled).length === 0 && (
+                          <div className="p-4 text-center text-dark-400 text-sm">
+                            No supported FTP clients detected.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* More FTP Clients */}
+                    {detectedFtpClients.some(c => !c.isInstalled) && (
+                      <div className="bg-dark-800/50 rounded-xl overflow-hidden">
+                        <div className="p-3 border-b border-dark-800/50">
+                          <span className="text-xs font-medium text-dark-400 uppercase tracking-wider">More Clients</span>
+                        </div>
+                        <div className="divide-y divide-dark-800/50">
+                          {detectedFtpClients.filter(c => !c.isInstalled).map((client) => (
+                            <div key={client.id} className="flex items-center justify-between p-4 bg-dark-800/20 opacity-70 hover:opacity-100 transition-all">
+                              <div className="flex items-center gap-3">
+                                <Server className="w-5 h-5 text-dark-400" />
+                                <div>
+                                  <p className="text-sm font-medium text-dark-200">{client.name}</p>
+                                  <p className="text-xs text-dark-500">{client.description}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => window.api.launch.url(client.downloadUrl)}
+                                className="btn-secondary text-xs px-3 py-1.5 h-auto opacity-70 hover:opacity-100"
+                              >
+                                <Download className="w-3 h-3 mr-2" />
+                                Get
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Security Tab */}
             {activeTab === 'security' && (
               <div className="space-y-6">
@@ -590,9 +915,9 @@ export function SettingsModal() {
                   <h3 className="text-lg font-medium text-dark-100 mb-4">Vault Status</h3>
                   <div className="p-4 bg-dark-800/50 rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isVaultSetup ? 'bg-accent-success/20' : 'bg-dark-700'
-                        }`}>
-                        <Shield className={`w-5 h-5 ${isVaultSetup ? 'text-accent-success' : 'text-dark-400'}`} />
+                      <div className={`w - 10 h - 10 rounded - xl flex items - center justify - center ${isVaultSetup ? 'bg-accent-success/20' : 'bg-dark-700'
+                        } `}>
+                        <Shield className={`w - 5 h - 5 ${isVaultSetup ? 'text-accent-success' : 'text-dark-400'} `} />
                       </div>
                       <div>
                         <p className="font-medium text-dark-100">
@@ -714,8 +1039,8 @@ export function SettingsModal() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div
-                          className={`w-3 h-3 rounded-full ${tailscaleStatus.connected ? 'bg-accent-success animate-pulse' : 'bg-dark-500'
-                            }`}
+                          className={`w - 3 h - 3 rounded - full ${tailscaleStatus.connected ? 'bg-accent-success animate-pulse' : 'bg-dark-500'
+                            } `}
                         />
                         <div>
                           <p className="text-sm font-medium text-dark-200">
@@ -732,7 +1057,7 @@ export function SettingsModal() {
                         disabled={isRefreshingTailscale}
                       >
                         <RefreshCw
-                          className={`w-4 h-4 ${isRefreshingTailscale ? 'animate-spin' : ''}`}
+                          className={`w - 4 h - 4 ${isRefreshingTailscale ? 'animate-spin' : ''} `}
                         />
                       </button>
                     </div>
@@ -762,25 +1087,72 @@ export function SettingsModal() {
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium text-dark-100 mb-4">SSH Terminal</h3>
-                  <label className="input-label">Default Terminal App</label>
-                  <select
-                    value={defaultTerminal}
-                    onChange={(e) => {
-                      const newTerminal = e.target.value;
-                      setDefaultTerminal(newTerminal);
-                      updateSettings({ defaultTerminal: newTerminal });
-                    }}
-                    className="input-base"
-                  >
-                    <option value="Terminal">Terminal.app</option>
-                    <option value="iTerm">iTerm2</option>
-                    <option value="Warp">Warp</option>
-                    <option value="Alacritty">Alacritty</option>
-                    <option value="Kitty">Kitty</option>
-                  </select>
-                  <p className="text-xs text-dark-500 mt-2">
-                    Terminal application used for SSH connections
-                  </p>
+                  <div className="space-y-4">
+                    {/* Detected Terminals */}
+                    <div className="bg-dark-800/50 rounded-xl overflow-hidden border border-dark-700">
+                      <div className="p-3 border-b border-dark-700 bg-dark-800/80">
+                        <h4 className="text-sm font-medium text-dark-200">Installed Terminals</h4>
+                      </div>
+                      <div className="p-2">
+                        {detectedTerminals.filter(t => t.isInstalled).map(term => (
+                          <label key={term.id} className={`flex items - center gap - 3 p - 3 rounded - lg cursor - pointer transition - colors ${defaultTerminal === term.id ? 'bg-accent-primary/10 border border-accent-primary/50' : 'hover:bg-dark-700/50 border border-transparent'
+                            } `}>
+                            <div className="flex items-center justify-center w-5 h-5">
+                              <input
+                                type="radio"
+                                name="terminal"
+                                checked={defaultTerminal === term.id}
+                                onChange={() => {
+                                  setDefaultTerminal(term.id);
+                                  updateSettings({ defaultTerminal: term.id });
+                                }}
+                                className="hidden"
+                              />
+                              {defaultTerminal === term.id && <div className="w-2.5 h-2.5 rounded-full bg-accent-primary" />}
+                              {defaultTerminal !== term.id && <div className="w-2.5 h-2.5 rounded-full border border-dark-500" />}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-dark-200">{term.name}</span>
+                                {term.id === 'Terminal' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-dark-700 text-dark-400">Default</span>}
+                              </div>
+                              <p className="text-xs text-dark-400">{term.description}</p>
+                            </div>
+                            {defaultTerminal === term.id && <Check className="w-4 h-4 text-accent-primary" />}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Available Terminals */}
+                    {detectedTerminals.some(t => !t.isInstalled) && (
+                      <div className="bg-dark-800/30 rounded-xl overflow-hidden border border-dark-700/50">
+                        <div className="p-3 border-b border-dark-700/50 bg-dark-800/50">
+                          <h4 className="text-sm font-medium text-dark-300">More Terminals</h4>
+                        </div>
+                        <div className="p-2 space-y-1">
+                          {detectedTerminals.filter(t => !t.isInstalled).map(term => (
+                            <div key={term.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-dark-800/50 transition-colors">
+                              <div className="flex items-center gap-3 opacity-70">
+                                <Terminal className="w-5 h-5 text-dark-500" />
+                                <div>
+                                  <span className="font-medium text-dark-300">{term.name}</span>
+                                  <p className="text-xs text-dark-500">{term.description}</p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => window.api.launch.url(term.downloadUrl)}
+                                className="btn-secondary text-xs px-3 py-1.5 h-auto opacity-70 hover:opacity-100"
+                              >
+                                <Download className="w-3 h-3 mr-2" />
+                                Get
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -799,56 +1171,56 @@ export function SettingsModal() {
                       label="New item"
                       value={settings?.keyboardShortcuts?.newItem || 'Meta+N'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), newItem: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), newItem: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="New group"
                       value={settings?.keyboardShortcuts?.newGroup || 'Meta+G'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), newGroup: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), newGroup: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="Command Palette"
                       value={settings?.keyboardShortcuts?.commandPalette || 'Meta+K'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), commandPalette: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), commandPalette: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="Focus search"
                       value={settings?.keyboardShortcuts?.focusSearch || 'Meta+F'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), focusSearch: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), focusSearch: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="Open settings"
                       value={settings?.keyboardShortcuts?.openSettings || 'Meta+,'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), openSettings: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), openSettings: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="Lock vault"
                       value={settings?.keyboardShortcuts?.lockVault || 'Meta+L'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), lockVault: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), lockVault: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="Select group 1"
                       value={settings?.keyboardShortcuts?.selectGroup1 || '1'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), selectGroup1: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), selectGroup1: value }
                       })}
                     />
                     <KeyboardShortcutRecorder
                       label="Show all groups"
                       value={settings?.keyboardShortcuts?.showAllGroups || '0'}
                       onChange={(value) => updateSettings({
-                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || {}), showAllGroups: value }
+                        keyboardShortcuts: { ...(settings?.keyboardShortcuts || DEFAULT_KEYBOARD_SHORTCUTS), showAllGroups: value }
                       })}
                     />
                   </div>
@@ -942,126 +1314,13 @@ export function SettingsModal() {
             )}
 
             {/* Data Tab */}
+            {/* Data Tab */}
             {activeTab === 'data' && (
-              <div className="space-y-6">
-                {/* Backup & Recovery */}
+              <div className="space-y-8">
+                {/* 1. Cloud Sync (WebDAV/Nextcloud) */}
                 <div>
-                  <h3 className="text-lg font-medium text-dark-100 mb-4">Backup & Recovery</h3>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">Cloud Sync (WebDAV/Nextcloud)</h3>
                   <div className="p-4 bg-dark-800/50 rounded-xl space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Archive className="w-5 h-5 text-dark-400" />
-                        <div>
-                          <p className="text-sm font-medium text-dark-200">Auto Backup</p>
-                          <p className="text-xs text-dark-500">Automatically back up your data locally</p>
-                        </div>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={backupEnabled}
-                          onChange={(e) => {
-                            setBackupEnabled(e.target.checked);
-                            updateSettings({ backupEnabled: e.target.checked });
-                          }}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-primary"></div>
-                      </label>
-                    </div>
-
-                    {backupEnabled && (
-                      <>
-                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-dark-700/50">
-                          <div>
-                            <label className="input-label text-xs">Frequency</label>
-                            <select
-                              value={backupFrequency}
-                              onChange={(e) => {
-                                const val = e.target.value as 'daily' | 'weekly' | 'manual';
-                                setBackupFrequency(val);
-                                updateSettings({ backupFrequency: val });
-                              }}
-                              className="input-base text-sm"
-                            >
-                              <option value="daily">Daily</option>
-                              <option value="weekly">Weekly</option>
-                              <option value="manual">Manual Only</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="input-label text-xs">Retention (Backups to keep)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={backupRetention}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value) || 30;
-                                setBackupRetention(val);
-                                updateSettings({ backupRetentionCount: val });
-                              }}
-                              className="input-base text-sm"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Backup Location */}
-                        <div className="pt-2 border-t border-dark-700/50">
-                          <label className="input-label text-xs">Backup Location</label>
-                          <div className="flex gap-2">
-                            <div className="flex-1 input-base text-sm text-dark-400 truncate flex items-center">
-                              {backupPath || 'Default (Application Data)'}
-                            </div>
-                            <button
-                              onClick={handleChangeBackupLocation}
-                              className="btn-secondary whitespace-nowrap"
-                              title="Change backup folder"
-                            >
-                              <Folder className="w-4 h-4 mr-2" />
-                              Change
-                            </button>
-                            {backupPath && (
-                              <button
-                                onClick={handleOpenBackupFolder}
-                                className="btn-secondary whitespace-nowrap"
-                                title="Open backup folder"
-                              >
-                                <FolderOpen className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-xs text-dark-500 mt-1">
-                            Where your backups are stored. Ensure you have write permissions.
-                          </p>
-                        </div>
-                      </>
-                    )}
-
-                    {settings?.lastAutoBackup && (
-                      <p className="text-xs text-dark-500 pt-1">
-                        Last auto-backup: {new Date(settings.lastAutoBackup).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Status Messages */}
-                {(exportStatus || importStatus || syncStatus) && (
-                  <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${(exportStatus?.includes('failed') || importStatus?.includes('failed') || syncStatus?.includes('failed') || syncStatus?.includes('Error'))
-                    ? 'bg-accent-danger/10 text-accent-danger'
-                    : 'bg-accent-success/10 text-accent-success'
-                    }`}>
-                    <Check className="w-4 h-4" />
-                    {exportStatus || importStatus || syncStatus}
-                  </div>
-                )}
-
-                {/* Sync */}
-                <div>
-                  <h3 className="text-lg font-medium text-dark-100 mb-4">Sync (WebDAV/Nextcloud)</h3>
-
-                  <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <label className="text-sm font-medium text-dark-200">Enable Sync</label>
@@ -1084,7 +1343,7 @@ export function SettingsModal() {
                     </div>
 
                     {syncEnabled && (
-                      <>
+                      <div className="space-y-4 pt-4 border-t border-dark-700/50 animate-in slide-in-from-top-2 fade-in duration-200">
                         <div>
                           <label className="input-label text-xs">WebDAV URL</label>
                           <input
@@ -1094,66 +1353,59 @@ export function SettingsModal() {
                             placeholder="https://nextcloud.example.com/remote.php/dav/files/username"
                             className="input-base text-sm"
                           />
-                          <p className="text-xs text-dark-500 mt-1">
-                            Your Nextcloud or WebDAV server URL
-                          </p>
                         </div>
 
-                        <div>
-                          <label className="input-label text-xs">Username</label>
-                          <input
-                            type="text"
-                            value={syncUsername}
-                            onChange={(e) => setSyncUsername(e.target.value)}
-                            placeholder="your-username"
-                            className="input-base text-sm"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="input-label text-xs">Password</label>
-                          <div className="relative">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="input-label text-xs">Username</label>
                             <input
-                              type={showSyncPassword ? 'text' : 'password'}
-                              value={showSyncPassword && hasSavedPassword && !syncPassword ? displayPassword : syncPassword}
-                              onChange={(e) => {
-                                setSyncPassword(e.target.value);
-                                setHasSavedPassword(false); // Clear indicator when user types
-                                setDisplayPassword(''); // Clear display password
-                              }}
-                              placeholder={hasSavedPassword && !syncPassword && !showSyncPassword ? '•••••••• (saved)' : 'Enter password'}
-                              className="input-base text-sm pr-10"
+                              type="text"
+                              value={syncUsername}
+                              onChange={(e) => setSyncUsername(e.target.value)}
+                              placeholder="username"
+                              className="input-base text-sm"
                             />
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (hasSavedPassword && !syncPassword && !showSyncPassword) {
-                                  // User wants to see saved password - decrypt it
-                                  if (settings?.syncPassword) {
-                                    try {
-                                      const decryptRes = await window.api.encryption.decrypt(settings.syncPassword);
-                                      if (decryptRes.success && decryptRes.data) {
-                                        setDisplayPassword(decryptRes.data);
+                          </div>
+                          <div>
+                            <label className="input-label text-xs">Password</label>
+                            <div className="relative">
+                              <input
+                                type={showSyncPassword ? 'text' : 'password'}
+                                value={showSyncPassword && hasSavedPassword && !syncPassword ? displayPassword : syncPassword}
+                                onChange={(e) => {
+                                  setSyncPassword(e.target.value);
+                                  setHasSavedPassword(false);
+                                  setDisplayPassword('');
+                                }}
+                                placeholder={hasSavedPassword && !syncPassword && !showSyncPassword ? '•••••••• (saved)' : 'password'}
+                                className="input-base text-sm pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (hasSavedPassword && !syncPassword && !showSyncPassword) {
+                                    if (settings?.syncPassword) {
+                                      try {
+                                        const decryptRes = await window.api.encryption.decrypt(settings.syncPassword);
+                                        if (decryptRes.success && decryptRes.data) {
+                                          setDisplayPassword(decryptRes.data);
+                                        }
+                                      } catch (error) {
+                                        console.error('Failed to decrypt password:', error);
                                       }
-                                    } catch (error) {
-                                      console.error('Failed to decrypt password:', error);
                                     }
                                   }
-                                }
-                                setShowSyncPassword(!showSyncPassword);
-                              }}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
-                            >
-                              {showSyncPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
+                                  setShowSyncPassword(!showSyncPassword);
+                                }}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-400 hover:text-dark-200"
+                              >
+                                {showSyncPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-xs text-dark-500 mt-1">
-                            {hasSavedPassword && !syncPassword
-                              ? 'Password is saved. Leave empty to keep existing password, or enter a new one to change it.'
-                              : 'Password is encrypted with your master password'}
-                          </p>
                         </div>
 
+                        {/* Sync Actions */}
                         <div className="flex gap-2">
                           <button
                             onClick={async () => {
@@ -1161,20 +1413,15 @@ export function SettingsModal() {
                                 setSyncStatus('Please fill in all fields');
                                 return;
                               }
-
                               setIsTestingConnection(true);
                               setSyncStatus(null);
-
                               try {
-                                // Use existing password if new one not provided
                                 let passwordToTest = syncPassword;
-                                let passwordToSave = settings?.syncPassword; // Keep existing if not changed
-
+                                let passwordToSave = settings?.syncPassword;
                                 if (syncPassword) {
-                                  // Encrypt new password before testing
                                   const encryptRes = await window.api.encryption.encrypt(syncPassword);
                                   if (!encryptRes.success) {
-                                    setSyncStatus('Error: Failed to encrypt password. Please unlock vault.');
+                                    setSyncStatus('Error: Failed to encrypt password.');
                                     return;
                                   }
                                   passwordToSave = encryptRes.data;
@@ -1182,233 +1429,386 @@ export function SettingsModal() {
                                   setSyncStatus('Please enter a password');
                                   return;
                                 }
-
-                                // For testing, we need the plain password - decrypt if using saved
                                 if (!passwordToTest && hasSavedPassword && settings?.syncPassword) {
                                   const decryptRes = await window.api.encryption.decrypt(settings.syncPassword);
-                                  if (decryptRes.success) {
-                                    passwordToTest = decryptRes.data;
-                                  } else {
-                                    setSyncStatus('Error: Could not decrypt saved password. Please enter password again.');
-                                    return;
-                                  }
+                                  if (decryptRes.success) passwordToTest = decryptRes.data;
+                                  else return;
                                 }
-
                                 const testRes = await window.api.sync.testConnection(syncUrl, syncUsername, passwordToTest);
                                 if (testRes.success) {
-                                  // Save settings (only update password if it was changed)
-                                  const updateData: any = {
-                                    syncEnabled: true,
-                                    syncUrl,
-                                    syncUsername,
-                                  };
-                                  if (syncPassword) {
-                                    updateData.syncPassword = passwordToSave;
-                                  }
+                                  const updateData: any = { syncEnabled: true, syncUrl, syncUsername };
+                                  if (syncPassword) updateData.syncPassword = passwordToSave;
                                   await window.api.settings.update(updateData);
                                   setHasSavedPassword(true);
-                                  setSyncPassword(''); // Clear field after saving
+                                  setSyncPassword('');
                                   setSyncStatus('Connection successful! Settings saved.');
                                 } else {
-                                  setSyncStatus(`Error: ${testRes.error || 'Connection failed'}`);
+                                  setSyncStatus(`Error: ${testRes.error || 'Connection failed'} `);
                                 }
                               } catch (error) {
-                                setSyncStatus(`Error: ${String(error)}`);
+                                setSyncStatus(`Error: ${String(error)} `);
                               } finally {
                                 setIsTestingConnection(false);
                               }
                             }}
-                            disabled={isTestingConnection || !syncUrl || !syncUsername || (!syncPassword && !hasSavedPassword)}
-                            className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                            disabled={isTestingConnection}
+                            className="btn-secondary flex-1"
                           >
-                            {isTestingConnection ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Testing...
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle2 className="w-4 h-4" />
-                                Test & Save
-                              </>
-                            )}
+                            {isTestingConnection ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                            Test & Save
                           </button>
 
                           <button
                             onClick={async () => {
                               setIsSyncing(true);
                               setSyncStatus(null);
-
                               try {
                                 const res = await window.api.sync.upload();
                                 if (res.success) {
                                   setSyncStatus('Sync successful!');
-                                  // Reload settings to get updated lastSync time
                                   const settingsRes = await window.api.settings.get();
                                   if (settingsRes.success && settingsRes.data) {
-                                    // Trigger a re-render by updating local state
                                     setSyncEnabled(settingsRes.data.syncEnabled || false);
                                     setSyncUrl(settingsRes.data.syncUrl || '');
                                     setSyncUsername(settingsRes.data.syncUsername || '');
                                     setHasSavedPassword(!!settingsRes.data.syncPassword);
                                   }
                                 } else {
-                                  setSyncStatus(`Error: ${res.error || 'Sync failed'}`);
+                                  setSyncStatus(`Error: ${res.error || 'Sync failed'} `);
                                 }
                               } catch (error) {
-                                setSyncStatus(`Error: ${String(error)}`);
+                                setSyncStatus(`Error: ${String(error)} `);
                               } finally {
                                 setIsSyncing(false);
                               }
                             }}
-                            disabled={isSyncing || !syncEnabled || !settings?.syncUrl || !settings?.syncUsername}
-                            className="btn-primary flex-1 flex items-center justify-center gap-2"
+                            disabled={isSyncing}
+                            className="btn-primary flex-1"
                           >
-                            {isSyncing ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Syncing...
-                              </>
-                            ) : (
-                              <>
-                                <Cloud className="w-4 h-4" />
-                                Sync Now
-                              </>
-                            )}
+                            {isSyncing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Cloud className="w-4 h-4 mr-2" />}
+                            Sync Now
+                          </button>
+                        </div>
+
+                        {/* Manual Sync Import */}
+                        <div className="pt-2 border-t border-dark-700/50">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-medium text-dark-300">Manual Restore</span>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              setImportStatus('Importing sync file...');
+                              try {
+                                const result = await window.api.data.importSyncFile();
+                                if (result.success && result.data) {
+                                  // Check for password requirement
+                                  const importData = result.data as any;
+                                  if (importData.requiresPassword) {
+                                    setPendingImportData({
+                                      importData: result.data.importData,
+                                      safeGroups: result.data.safeGroups,
+                                      safeItems: result.data.safeItems,
+                                      requiresPassword: true,
+                                    });
+                                    if (result.data.conflicts.length > 0) setImportConflicts(result.data.conflicts);
+                                    setIsImportPasswordModalOpen(true);
+                                    setImportStatus(null);
+                                    return;
+                                  }
+
+                                  if (result.data.conflicts.length > 0) {
+                                    setImportConflicts(result.data.conflicts);
+                                    setPendingImportData({
+                                      importData: result.data.importData,
+                                      safeGroups: result.data.safeGroups,
+                                      safeItems: result.data.safeItems,
+                                    });
+                                    setIsConflictModalOpen(true);
+                                    setImportStatus(null);
+                                  } else {
+                                    const importResult = await window.api.data.importWithResolutions(
+                                      result.data.importData,
+                                      result.data.safeGroups,
+                                      result.data.safeItems,
+                                      {}
+                                    );
+                                    if (importResult.success && importResult.data) {
+                                      setImportStatus(`Imported ${importResult.data.groupsCount} groups and ${importResult.data.itemsCount} items from sync file`);
+                                      await loadData();
+                                      setTimeout(() => setImportStatus(null), 3000);
+                                    } else {
+                                      setImportStatus(importResult.error || 'Import failed');
+                                    }
+                                  }
+                                } else {
+                                  setImportStatus(result.error || 'Import failed');
+                                }
+                              } catch (error) {
+                                setImportStatus('Import failed');
+                              }
+                            }}
+                            className="btn-secondary w-full text-xs"
+                          >
+                            <FileUp className="w-3 h-3 mr-2" />
+                            Restore from Sync File (launchpad-data.json)
                           </button>
                         </div>
 
                         {settings?.lastSync && (
-                          <p className="text-xs text-dark-500">
+                          <p className="text-xs text-dark-500 text-center">
                             Last synced: {new Date(settings.lastSync).toLocaleString()}
                           </p>
                         )}
-
-                        <div className="relative my-4">
-                          <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-dark-700" />
-                          </div>
-                          <div className="relative flex justify-center text-xs">
-                            <span className="px-2 bg-dark-800 text-dark-500">or import manually</span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={async () => {
-                            setImportStatus('Importing sync file...');
-                            try {
-                              const result = await window.api.data.importSyncFile();
-                              if (result.success && result.data) {
-                                setImportStatus(`Imported ${result.data.groupsCount} groups and ${result.data.itemsCount} items from sync file`);
-                                await loadData();
-                                setTimeout(() => setImportStatus(null), 3000);
-                              } else {
-                                setImportStatus(result.error || 'Import failed');
-                              }
-                            } catch (error) {
-                              setImportStatus('Import failed');
-                            }
-                          }}
-                          className="btn-secondary w-full"
-                        >
-                          <FileUp className="w-4 h-4" />
-                          Import Sync File
-                        </button>
-                        <p className="text-xs text-dark-500 mt-1">
-                          Import a manually downloaded sync file (launchpad-data.json)
-                        </p>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-dark-700" />
+                {/* Status Messages */}
+                {(exportStatus || importStatus || syncStatus) && (
+                  <div className={`p-3 rounded-lg text-sm flex items-center gap-2 ${(exportStatus?.includes('failed') || importStatus?.includes('failed') || syncStatus?.includes('failed') || syncStatus?.includes('Error'))
+                    ? 'bg-accent-danger/10 text-accent-danger'
+                    : 'bg-accent-success/10 text-accent-success'
+                    }`}>
+                    {(exportStatus?.includes('failed') || importStatus?.includes('failed') || syncStatus?.includes('failed') || syncStatus?.includes('Error'))
+                      ? <AlertCircle className="w-4 h-4" />
+                      : <Check className="w-4 h-4" />
+                    }
+                    {exportStatus || importStatus || syncStatus}
+                  </div>
+                )}
+
+
+                {/* 2. JSON Backup & Restore (Local) */}
+                <div>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">JSON Backup & Restore</h3>
+                  <div className="p-4 bg-dark-800/50 rounded-xl space-y-6">
+
+                    {/* Manual Actions */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={handleExport} className="btn-secondary flex flex-col items-center justify-center gap-2 py-4 h-auto hover:bg-dark-700/50">
+                        <Download className="w-6 h-6 text-accent-primary" />
+                        <div className="text-center">
+                          <span className="block font-medium text-dark-100">Export JSON</span>
+                          <span className="block text-xs text-dark-400 mt-1">Save all data to file</span>
+                        </div>
+                      </button>
+                      <button onClick={handleImport} className="btn-secondary flex flex-col items-center justify-center gap-2 py-4 h-auto hover:bg-dark-700/50">
+                        <Upload className="w-6 h-6 text-accent-primary" />
+                        <div className="text-center">
+                          <span className="block font-medium text-dark-100">Import JSON</span>
+                          <span className="block text-xs text-dark-400 mt-1">Restore from file</span>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Auto Backup Settings */}
+                    <div className="pt-4 border-t border-dark-700/50">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                          <Archive className="w-4 h-4 text-dark-400" />
+                          <div>
+                            <p className="text-sm font-medium text-dark-200">Auto Backup</p>
+                            <p className="text-xs text-dark-500">Automatically back up to local disk</p>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={backupEnabled}
+                            onChange={(e) => {
+                              setBackupEnabled(e.target.checked);
+                              updateSettings({ backupEnabled: e.target.checked });
+                            }}
+                            className="sr-only peer"
+                          />
+                          <div className="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent-primary"></div>
+                        </label>
+                      </div>
+
+                      {backupEnabled && (
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-1">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="input-label text-xs">Frequency</label>
+                              <select
+                                value={backupFrequency}
+                                onChange={(e) => {
+                                  const val = e.target.value as 'daily' | 'weekly' | 'manual';
+                                  setBackupFrequency(val);
+                                  updateSettings({ backupFrequency: val });
+                                }}
+                                className="input-base text-sm"
+                              >
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="manual">Manual Only</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="input-label text-xs">Retention</label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={backupRetention}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 30;
+                                  setBackupRetention(val);
+                                  updateSettings({ backupRetentionCount: val });
+                                }}
+                                className="input-base text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="input-label text-xs">Backup Location</label>
+                            <div className="flex gap-2">
+                              <div className="flex-1 input-base text-sm text-dark-400 truncate flex items-center bg-dark-900/50">
+                                {resolvedBackupPath || backupPath || 'Loading...'}
+                              </div>
+                              <button
+                                onClick={handleChangeBackupLocation}
+                                className="btn-secondary whitespace-nowrap px-3"
+                                title="Change backup folder"
+                              >
+                                Change
+                              </button>
+                              {backupPath && (
+                                <button
+                                  onClick={handleOpenBackupFolder}
+                                  className="btn-secondary whitespace-nowrap px-3"
+                                  title="Open backup folder"
+                                >
+                                  Open
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="flex items-center justify-between pt-2">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={async () => {
+                                    setExportStatus('Creating backup...');
+                                    try {
+                                      const res = await window.api.backup.create();
+                                      if (res.success && res.data) {
+                                        setExportStatus('Backup created successfully');
+                                        const settingsRes = await window.api.settings.get();
+                                        if (settingsRes.success && settingsRes.data) {
+                                          useStore.setState({ settings: settingsRes.data });
+                                        }
+                                      } else {
+                                        setExportStatus(`Error: ${res.error}`);
+                                      }
+                                    } catch (error) {
+                                      setExportStatus(`Error: ${String(error)}`);
+                                    }
+                                    setTimeout(() => setExportStatus(null), 3000);
+                                  }}
+                                  className="btn-secondary text-xs px-3 py-1.5"
+                                  title="Trigger a backup immediately"
+                                >
+                                  <Archive className="w-3 h-3 mr-2" />
+                                  Backup Now
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm('Are you sure you want to restore the latest auto-backup? Current data will be replaced.')) return;
+                                    setExportStatus('Restoring backup...');
+                                    try {
+                                      const res = await window.api.backup.undo();
+                                      if (res.success) {
+                                        setExportStatus('Restored successfully');
+                                        await loadData();
+                                      } else {
+                                        setExportStatus(`Error: ${res.error}`);
+                                      }
+                                    } catch (error) {
+                                      setExportStatus(`Error: ${String(error)}`);
+                                    }
+                                    setTimeout(() => setExportStatus(null), 3000);
+                                  }}
+                                  className="btn-secondary text-xs px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-red-400/10 border-red-400/20"
+                                  title="Restore the most recent auto-backup"
+                                >
+                                  <RefreshCw className="w-3 h-3 mr-2" />
+                                  Restore Latest
+                                </button>
+                              </div>
+                              <p className="text-xs text-dark-500 text-right">
+                                Last auto-backup: {settings?.lastAutoBackup ? new Date(settings.lastAutoBackup).toLocaleString() : 'Never'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Backup & Restore */}
+                {/* 3. Browser Import */}
                 <div>
-                  <h3 className="text-lg font-medium text-dark-100 mb-4">Backup & Restore</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={handleExport} className="btn-secondary">
-                      <Download className="w-4 h-4" />
-                      Export Data
-                    </button>
-                    <button onClick={handleImport} className="btn-secondary">
-                      <Upload className="w-4 h-4" />
-                      Import Data
-                    </button>
+                  <h3 className="text-lg font-medium text-dark-100 mb-4">Browser Import</h3>
+                  <div className="p-4 bg-dark-800/50 rounded-xl space-y-4">
+                    <p className="text-sm text-dark-400">
+                      Import bookmarks directly from your installed browsers or from an HTML file.
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-3">
+                      <button
+                        onClick={() => setIsBrowserImportOpen(true)}
+                        className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+                      >
+                        <Globe className="w-5 h-5" />
+                        Import from Detected Browsers
+                      </button>
+
+                      <div className="pt-2 border-t border-dark-700/50">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-medium text-dark-300">Import HTML File to Group</label>
+                          <div className="flex gap-2">
+                            <select
+                              value={selectedImportGroup}
+                              onChange={(e) => setSelectedImportGroup(e.target.value)}
+                              className="input-base flex-1 text-sm"
+                            >
+                              <option value="">Select Group...</option>
+                              {groups.map((group) => (
+                                <option key={group.id} value={group.id}>
+                                  {group.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={handleImportBrowserBookmarks}
+                              disabled={!selectedImportGroup}
+                              className="btn-secondary whitespace-nowrap"
+                            >
+                              Import HTML
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-dark-500 mt-2">
-                    Export or import all groups and bookmarks as JSON
-                  </p>
                 </div>
 
-                {/* Browser Import */}
-                <div>
-                  <h3 className="text-lg font-medium text-dark-100 mb-4">Import Browser Bookmarks</h3>
-                  <button
-                    onClick={() => setIsBrowserImportOpen(true)}
-                    className="btn-primary w-full mb-3"
-                  >
-                    <Globe className="w-4 h-4" />
-                    Import from Browser
-                  </button>
-                  <p className="text-xs text-dark-500">
-                    Import directly from Chrome, Firefox, Safari, Brave, Arc, and more
-                  </p>
-
-                  <button onClick={handleImport} className="btn-secondary">
-                    📥 Import Backup
-                  </button>
-                  {importStatus && (
-                    <p className="text-sm text-dark-300 mt-2">{importStatus}</p>
-                  )}
-                </div>
-
-                <div className="p-4 bg-dark-800/50 rounded-xl">
-                  <label className="input-label">Browser Import Groups</label>
-                  <p className="text-sm text-dark-400 mb-3">
-                    Select a group to import browser bookmarks into.
-                  </p>
-                  <select
-                    value={selectedImportGroup}
-                    onChange={(e) => setSelectedImportGroup(e.target.value)}
-                    className="input-base mb-3"
-                  >
-                    <option value="">Select a group...</option>
-                    {groups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.icon} {group.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={handleImportBrowserBookmarks}
-                    disabled={!selectedImportGroup}
-                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    📚 Import from Browser
-                  </button>
-                </div>
-
-                {/* Delete All Data */}
-                <div className="p-4 bg-red-900/20 border border-red-500/30 rounded-xl">
+                {/* 4. Danger Zone */}
+                <div className="p-4 bg-red-900/10 border border-red-500/20 rounded-xl">
                   <div className="flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
-                      <h4 className="font-medium text-red-400 mb-2">Danger Zone</h4>
-                      <p className="text-sm text-dark-300 mb-3">
-                        Permanently delete all groups, items, and data. This action cannot be undone.
+                      <h4 className="font-medium text-red-400 mb-1">Danger Zone</h4>
+                      <p className="text-sm text-dark-400 mb-3">
+                        Permanently delete all groups, items, and settings.
                       </p>
                       <button
                         onClick={() => setIsDeleteAllModalOpen(true)}
-                        className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
+                        className="text-xs px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-colors font-medium"
                       >
-                        🗑️ Delete All Data
+                        Delete All Data
                       </button>
                     </div>
                   </div>
@@ -1440,12 +1840,12 @@ export function SettingsModal() {
                         setAiEnabled(newValue);
                         await updateSettings({ aiEnabled: newValue });
                       }}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${aiEnabled ? 'bg-accent-primary' : 'bg-dark-700'
-                        }`}
+                      className={`relative inline - flex h - 6 w - 11 items - center rounded - full transition - colors ${aiEnabled ? 'bg-accent-primary' : 'bg-dark-700'
+                        } `}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${aiEnabled ? 'translate-x-6' : 'translate-x-1'
-                          }`}
+                        className={`inline - block h - 4 w - 4 transform rounded - full bg - white transition - transform ${aiEnabled ? 'translate-x-6' : 'translate-x-1'
+                          } `}
                       />
                     </button>
                   </div>

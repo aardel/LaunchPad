@@ -7,6 +7,9 @@ import {
   SSHItem,
   AppItem,
   NetworkProfile,
+  TerminalApp,
+  DetectedTerminal,
+  DetectedFtpClient,
 } from '../../shared/types';
 import { BrowserService } from './browsers';
 
@@ -149,144 +152,7 @@ export class LauncherService {
     }
   }
 
-  private async launchSSH(item: SSHItem, profile: NetworkProfile, password?: string, terminal: string = 'Terminal'): Promise<void> {
-    const host = this.getAddressForProfile(item.networkAddresses, profile);
-    if (!host) {
-      throw new Error('No address configured for this profile');
-    }
 
-    const port = item.port || 22;
-    const username = item.username || 'root';
-
-    const platform = process.platform;
-
-    if (platform === 'darwin') {
-      const isITerm = terminal.toLowerCase().includes('iterm');
-      const terminalApp = isITerm ? 'iTerm' : 'Terminal';
-
-      let sshCommand = '';
-      let tempScript = '';
-      let hasCleanup = false;
-
-      if (password) {
-        // Use sshpass if available, otherwise use expect script
-        const hasSshpass = await this.checkCommand('sshpass');
-
-        if (hasSshpass) {
-          // Use sshpass for password authentication
-          sshCommand = `sshpass -p '${this.escapeShellArg(password)}' ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}`;
-        } else {
-          // Use expect script for password authentication
-          const expectScript = `
-            spawn ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}
-            expect {
-              "password:" {
-                send "${this.escapeExpectArg(password)}\\r"
-                interact
-              }
-              "Password:" {
-                send "${this.escapeExpectArg(password)}\\r"
-                interact
-              }
-              "yes/no" {
-                send "yes\\r"
-                expect "password:"
-                send "${this.escapeExpectArg(password)}\\r"
-                interact
-              }
-              timeout {
-                interact
-              }
-            }
-          `;
-
-          // Write expect script to temp file and execute
-          tempScript = `/tmp/launchpad_ssh_${Date.now()}.exp`;
-          const { writeFileSync } = require('fs');
-          writeFileSync(tempScript, expectScript);
-          sshCommand = `expect '${tempScript}' && rm '${tempScript}'`;
-          hasCleanup = true;
-        }
-      } else {
-        // No password - standard SSH
-        sshCommand = `ssh ${username}@${host} -p ${port}`;
-      }
-
-      // Terminal-specific AppleScript
-      let script = '';
-      if (isITerm) {
-        script = `
-          tell application "iTerm"
-            activate
-            set newWindow to (create window with default profile)
-            tell current session of newWindow
-              write text "${sshCommand.replace(/"/g, '\\"')}"
-            end tell
-          end tell
-        `;
-      } else {
-        // Default Terminal.app
-        script = `
-          tell application "Terminal"
-            activate
-            do script "${sshCommand.replace(/"/g, '\\"')}"
-          end tell
-        `;
-      }
-
-      try {
-        await execAsync(`osascript -e '${script}'`);
-      } catch (error) {
-        console.error(`Failed to launch ${terminalApp}:`, error);
-        // Fallback for expect script cleanup if osascript failed
-        if (hasCleanup && tempScript) {
-          const { unlinkSync, existsSync } = require('fs');
-          if (existsSync(tempScript)) {
-            unlinkSync(tempScript);
-          }
-        }
-        throw error;
-      }
-    } else if (platform === 'win32') {
-
-      // Windows - open in Windows Terminal or cmd
-      const sshCommand = `ssh ${username}@${host} -p ${port}`;
-      try {
-        // Try Windows Terminal first
-        spawn('wt', ['new-tab', 'cmd', '/k', sshCommand], { detached: true, stdio: 'ignore' });
-      } catch {
-        // Fallback to cmd
-        spawn('cmd', ['/k', sshCommand], { detached: true, stdio: 'ignore' });
-      }
-    } else {
-      // Linux - try common terminal emulators
-      const sshCommand = password
-        ? `sshpass -p '${this.escapeShellArg(password)}' ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}`
-        : `ssh ${username}@${host} -p ${port}`;
-
-      const terminals = [
-        ['gnome-terminal', '--', 'bash', '-c', `${sshCommand}; exec bash`],
-        ['konsole', '-e', sshCommand],
-        ['xfce4-terminal', '-e', sshCommand],
-        ['xterm', '-e', sshCommand],
-      ];
-
-      let launched = false;
-      for (const [terminal, ...args] of terminals) {
-        try {
-          spawn(terminal, args, { detached: true, stdio: 'ignore' });
-          launched = true;
-          break;
-        } catch {
-          continue;
-        }
-      }
-
-      if (!launched) {
-        throw new Error('No supported terminal emulator found');
-      }
-    }
-  }
 
   private async checkCommand(command: string): Promise<boolean> {
     try {
@@ -382,6 +248,343 @@ export class LauncherService {
 
     return url;
   }
+
+  async detectInstalledTerminals(): Promise<DetectedTerminal[]> {
+    const terminals: DetectedTerminal[] = [
+      {
+        id: 'Terminal',
+        name: 'Terminal',
+        isInstalled: true, // Always installed on macOS
+        path: '/System/Applications/Utilities/Terminal.app',
+        downloadUrl: '',
+        description: 'Default macOS terminal emulator',
+      },
+      {
+        id: 'iTerm',
+        name: 'iTerm2',
+        isInstalled: false,
+        downloadUrl: 'https://iterm2.com/downloads.html',
+        description: 'Popular replacement for Terminal with many features',
+      },
+      {
+        id: 'Warp',
+        name: 'Warp',
+        isInstalled: false,
+        downloadUrl: 'https://www.warp.dev/',
+        description: 'Modern, Rust-based terminal with AI features',
+      },
+      {
+        id: 'Alacritty',
+        name: 'Alacritty',
+        isInstalled: false,
+        downloadUrl: 'https://alacritty.org/',
+        description: 'Fast, cross-platform, OpenGL terminal emulator',
+      },
+      {
+        id: 'Kitty',
+        name: 'Kitty',
+        isInstalled: false,
+        downloadUrl: 'https://sw.kovidgoyal.net/kitty/',
+        description: 'GPU-based terminal emulator',
+      },
+      {
+        id: 'Hyper',
+        name: 'Hyper',
+        isInstalled: false,
+        downloadUrl: 'https://hyper.is/',
+        description: 'Electron-based terminal with web technologies',
+      },
+    ];
+
+    for (const term of terminals) {
+      if (term.id === 'Terminal') continue;
+
+      try {
+        // Use mdfind to find app bundle
+        // Example: mdfind "kMDItemCFBundleIdentifier == 'com.googlecode.iterm2'"
+        const bundleIdMap: Record<string, string> = {
+          'iTerm': 'com.googlecode.iterm2',
+          'Warp': 'dev.warp.Warp', // Verify this ID
+          'Alacritty': 'org.alacritty',
+          'Kitty': 'net.kovidgoyal.kitty',
+          'Hyper': 'co.zeit.hyper',
+        };
+
+        const bundleId = bundleIdMap[term.id];
+        if (bundleId) {
+          const { stdout } = await execAsync(`mdfind "kMDItemCFBundleIdentifier == '${bundleId}'" | head -n 1`);
+          if (stdout.trim()) {
+            term.isInstalled = true;
+            term.path = stdout.trim();
+          } else {
+            // Fallback common paths
+            const commonPaths = [
+              `/Applications/${term.name}.app`,
+              `${process.env.HOME}/Applications/${term.name}.app`
+            ];
+            for (const p of commonPaths) {
+              try {
+                const { existsSync } = require('fs');
+                if (existsSync(p)) {
+                  term.isInstalled = true;
+                  term.path = p;
+                  break;
+                }
+              } catch { }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error checking terminal ${term.name}:`, e);
+      }
+    }
+
+    return terminals;
+  }
+
+  async detectInstalledFtpClients(): Promise<DetectedFtpClient[]> {
+    const clients: DetectedFtpClient[] = [
+      {
+        id: 'FileZilla',
+        name: 'FileZilla',
+        isInstalled: false,
+        downloadUrl: 'https://filezilla-project.org/',
+        description: 'Free open source FTP solution',
+      },
+      {
+        id: 'Cyberduck',
+        name: 'Cyberduck',
+        isInstalled: false,
+        downloadUrl: 'https://cyberduck.io/',
+        description: 'Libre server and cloud storage browser',
+      },
+      {
+        id: 'Transmit',
+        name: 'Transmit',
+        isInstalled: false,
+        downloadUrl: 'https://panic.com/transmit/',
+        description: 'Premium file transfer app for macOS',
+      },
+      {
+        id: 'ForkLift',
+        name: 'ForkLift',
+        isInstalled: false,
+        downloadUrl: 'https://binarynights.com/',
+        description: 'Advanced dual pane file manager',
+      },
+    ];
+
+    for (const client of clients) {
+      try {
+        const bundleIdMap: Record<string, string> = {
+          'FileZilla': 'org.filezilla-project.filezilla',
+          'Cyberduck': 'ch.sudo.cyberduck',
+          'Transmit': 'com.panic.Transmit',
+          'ForkLift': 'com.binarynights.ForkLift-3',
+        };
+
+        const bundleId = bundleIdMap[client.id];
+        if (bundleId) {
+          const { stdout } = await execAsync(`mdfind "kMDItemCFBundleIdentifier == '${bundleId}'" | head -n 1`);
+          if (stdout.trim()) {
+            client.isInstalled = true;
+            client.path = stdout.trim();
+          } else {
+            // Fallback common paths
+            const commonPaths = [
+              `/Applications/${client.name}.app`,
+              `${process.env.HOME}/Applications/${client.name}.app`
+            ];
+            for (const p of commonPaths) {
+              try {
+                const { existsSync } = require('fs');
+                if (existsSync(p)) {
+                  client.isInstalled = true;
+                  client.path = p;
+                  break;
+                }
+              } catch { }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`Error checking FTP client ${client.name}:`, e);
+      }
+    }
+
+    return clients;
+  }
+
+  private async launchSSH(item: SSHItem, profile: NetworkProfile, password?: string, terminal: string = 'Terminal'): Promise<void> {
+    const host = this.getAddressForProfile(item.networkAddresses, profile);
+    if (!host) {
+      throw new Error('No address configured for this profile');
+    }
+
+    const port = item.port || 22;
+    const username = item.username || 'root';
+
+    const platform = process.platform;
+
+    if (platform === 'darwin') {
+      const isITerm = terminal.toLowerCase().includes('iterm');
+
+      let sshCommand = '';
+      let tempScript = '';
+      let hasCleanup = false;
+
+      // Handle password authentication
+      if (password) {
+        const hasSshpass = await this.checkCommand('sshpass');
+
+        if (hasSshpass) {
+          sshCommand = `sshpass -p '${this.escapeShellArg(password)}' ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}`;
+        } else {
+          // Use expect script
+          const expectScript = `
+            spawn ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}
+            expect {
+              "password:" {
+                send "${this.escapeExpectArg(password)}\\r"
+                interact
+              }
+              "Password:" {
+                send "${this.escapeExpectArg(password)}\\r"
+                interact
+              }
+              "yes/no" {
+                send "yes\\r"
+                expect "password:"
+                send "${this.escapeExpectArg(password)}\\r"
+                interact
+              }
+              timeout {
+                interact
+              }
+            }
+          `;
+
+          tempScript = `/tmp/launchpad_ssh_${Date.now()}.exp`;
+          const { writeFileSync, chmodSync } = require('fs');
+          writeFileSync(tempScript, expectScript);
+          chmodSync(tempScript, '755'); // Make executable
+
+          // For non-AppleScript terminals, we execute the expect script directly
+          if (terminal === 'Terminal' || terminal === 'iTerm') {
+            sshCommand = `expect '${tempScript}' && rm '${tempScript}'`;
+          } else {
+            // For others, simply running the script is often easier if passed as an arg
+            sshCommand = `expect '${tempScript}'`;
+          }
+          hasCleanup = true;
+        }
+      } else {
+        sshCommand = `ssh ${username}@${host} -p ${port}`;
+      }
+
+      // Launch based on terminal
+      if (terminal === 'Terminal') {
+        const script = `
+          tell application "Terminal"
+            activate
+            do script "${sshCommand.replace(/"/g, '\\"')}"
+          end tell
+        `;
+        await execAsync(`osascript -e '${script}'`);
+      } else if (terminal === 'iTerm') {
+        const script = `
+          tell application "iTerm"
+            activate
+            set newWindow to (create window with default profile)
+            tell current session of newWindow
+              write text "${sshCommand.replace(/"/g, '\\"')}"
+            end tell
+          end tell
+        `;
+        await execAsync(`osascript -e '${script}'`);
+      } else if (terminal === 'Warp') {
+        // Warp doesn't support CLI args for commands yet.
+        // Best effort: Just open Warp. User has to type.
+        // Or try opening a `ssh://` URL if Warp registers it?
+        // Warp DOES register for `warp://` but unclear if it supports ssh args.
+        // Try: open -a Warp
+        spawn('open', ['-a', 'Warp']);
+      } else if (terminal === 'Alacritty') {
+        // Alacritty: -e command
+        // We wrap in a shell to ensure environment is sane
+        const cmd = tempScript ? tempScript : sshCommand;
+        spawn('open', ['-na', 'Alacritty', '--args', '-e', 'bash', '-c', `${cmd}; exec bash`]);
+      } else if (terminal === 'Kitty') {
+        // Kitty: kitty ssh ...
+        // open -na kitty --args ...
+        const cmd = tempScript ? ['expect', tempScript] : ['ssh', `${username}@${host}`, '-p', `${port}`];
+        spawn('open', ['-na', 'kitty', '--args', ...cmd]);
+      } else if (terminal === 'Hyper') {
+        // Hyper: hyper ssh ... (cli must be installed) or open -a Hyper
+        // Hyper is hard to automate without 'hyper' CLI in path.
+        // Attempt to launch via open and hope user has configured it as default or just open window.
+        // Actually Hyper plugins can handle this, but base Hyper is limited.
+        spawn('open', ['-a', 'Hyper']);
+      } else {
+        // Fallback to Terminal
+        const script = `
+          tell application "Terminal"
+            activate
+            do script "${sshCommand.replace(/"/g, '\\"')}"
+          end tell
+        `;
+        await execAsync(`osascript -e '${script}'`);
+      }
+
+      // Cleanup happens inside the command execution path for AppleScript
+      // For spawn, we might need manual cleanup after a delay if using generic expect script file
+      if (hasCleanup && !['Terminal', 'iTerm'].includes(terminal)) {
+        setTimeout(() => {
+          try {
+            const { unlinkSync, existsSync } = require('fs');
+            if (existsSync(tempScript)) unlinkSync(tempScript);
+          } catch { }
+        }, 5000); // Give it 5s to start
+      }
+
+    } else if (platform === 'win32') {
+      // ... existing Windows logic ...
+      const sshCommand = `ssh ${username}@${host} -p ${port}`;
+      try {
+        spawn('wt', ['new-tab', 'cmd', '/k', sshCommand], { detached: true, stdio: 'ignore' });
+      } catch {
+        spawn('cmd', ['/k', sshCommand], { detached: true, stdio: 'ignore' });
+      }
+    } else {
+      // ... existing Linux logic ...
+      const sshCommand = password
+        ? `sshpass -p '${this.escapeShellArg(password)}' ssh -o StrictHostKeyChecking=accept-new ${username}@${host} -p ${port}`
+        : `ssh ${username}@${host} -p ${port}`;
+
+      const terminals = [
+        ['gnome-terminal', '--', 'bash', '-c', `${sshCommand}; exec bash`],
+        ['konsole', '-e', sshCommand],
+        ['xfce4-terminal', '-e', sshCommand],
+        ['xterm', '-e', sshCommand],
+      ];
+
+      let launched = false;
+      for (const [terminal, ...args] of terminals) {
+        try {
+          spawn(terminal, args, { detached: true, stdio: 'ignore' });
+          launched = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!launched) {
+        throw new Error('No supported terminal emulator found');
+      }
+    }
+  }
+
 
   private getAddressForProfile(
     addresses: { local?: string; tailscale?: string; vpn?: string; custom?: string },

@@ -41,6 +41,12 @@ Switch between different network contexts seamlessly:
 - **Local Extension Server** - Built-in HTTP server for browser extension communication
 - **Browser-Specific Launching** - Force `chrome://`, `edge://`, `brave://`, `opera://` URLs to open in their respective browsers
 - **Native Browser Support** - Added support for Opera and ChatGPT desktop app URLs
+- **Dedicated Settings Tab** - Easily configure your default browser preferences in the new Browsers tab
+
+### 📂 File Transfer (FTP/SFTP)
+- **FTP Client Detection** - Automatically detects installed FTP clients (FileZilla, Cyberduck, Transmit, ForkLift)
+- **One-Click Connect** - Launch FTP/SFTP connections directly in your preferred client
+- **Credential Injection** - Automatically passes credentials to compatible clients for seamless login
 
 ### 🖥️ Desktop Integration
 - **Menu Bar Tray** - "LaunchIt" tray icon (🔖) for quick access to groups and bookmarks without opening the main window
@@ -212,6 +218,10 @@ LaunchIt automatically creates backups before major changes:
 - **Undo Button:** Appears in title bar when backup is available
 - **One-Click Restore:** Click undo to restore previous state
 - **Smart Cleanup:** Keeps last 10 backups automatically
+
+- **Manual Backups** - Trigger a backup anytime with the "Backup Now" button
+- **Restore Latest** - Quickly revert to the most recent backup with a single click
+- **Custom Backup Location** - Specify where backups are stored
 
 **How to use:**
 1. Make changes (delete, update items)

@@ -94,6 +94,33 @@ const BROWSERS_LINUX: Omit<Browser, 'path'>[] = [
   { id: 'vivaldi', name: 'Vivaldi', icon: '🎨' },
 ];
 
+const BROWSER_METADATA: Record<string, { downloadUrl: string; description: string }> = {
+  chrome: { downloadUrl: 'https://www.google.com/chrome/', description: 'Fast, secure, and free web browser built for the modern web.' },
+  firefox: { downloadUrl: 'https://www.mozilla.org/firefox/new/', description: 'Faster page loading, less memory usage and packed with features.' },
+  safari: { downloadUrl: 'https://www.apple.com/safari/', description: 'The fastest, most power-efficient browser.' },
+  brave: { downloadUrl: 'https://brave.com/download/', description: 'The browser that puts you first.' },
+  edge: { downloadUrl: 'https://www.microsoft.com/edge', description: 'World-class performance with more privacy and productivity.' },
+  arc: { downloadUrl: 'https://arc.net/', description: 'The browser that browses for you.' },
+  opera: { downloadUrl: 'https://www.opera.com/download', description: 'Faster, safer and smarter than default browsers.' },
+  vivaldi: { downloadUrl: 'https://vivaldi.com/download/', description: 'Powerful, personal and private.' },
+  chromium: { downloadUrl: 'https://download-chromium.appspot.com/', description: 'Open-source web browser project.' },
+  orion: { downloadUrl: 'https://browser.kagi.com/', description: 'A fast, zero telemetry browser.' },
+  waterfox: { downloadUrl: 'https://www.waterfox.net/download/', description: 'The ethical, user-oriented browser.' },
+  tor: { downloadUrl: 'https://www.torproject.org/download/', description: 'Protect yourself against tracking, surveillance, and censorship.' },
+  duckduckgo: { downloadUrl: 'https://duckduckgo.com/mac', description: 'Privacy, simplified.' },
+  sidekick: { downloadUrl: 'https://www.meetsidekick.com/', description: 'The fastest browser for work.' },
+  sigma: { downloadUrl: 'https://sigmaos.com/', description: 'The browser that works like your OS.' },
+  zen: { downloadUrl: 'https://zen-browser.app/', description: 'Peace of mind while browsing.' },
+  floorp: { downloadUrl: 'https://floorp.app/en/', description: 'A partially customized Firefox derivative.' },
+  librewolf: { downloadUrl: 'https://librewolf.net/', description: 'A custom version of Firefox, focused on privacy, security and freedom.' },
+  mullvad: { downloadUrl: 'https://mullvad.net/en/browser', description: 'Privacy-focused browser developed in collaboration with the Tor Project.' },
+  min: { downloadUrl: 'https://minbrowser.org/', description: 'A faster, smarter web browser.' },
+  beam: { downloadUrl: 'https://beamapp.co/', description: 'The browser for the knowledge economy.' },
+  chatgpt: { downloadUrl: 'https://openai.com/chatgpt', description: 'AI-powered chat interface.' },
+};
+
+import { DetectedBrowser } from '../../shared/types';
+
 export class BrowserService {
   private installedBrowsers: Browser[] = [];
   private cached = false;
@@ -104,7 +131,7 @@ export class BrowserService {
     }
 
     const platform = process.platform;
-    
+
     if (platform === 'darwin') {
       this.installedBrowsers = await this.detectMacBrowsers();
     } else if (platform === 'win32') {
@@ -117,6 +144,44 @@ export class BrowserService {
     return this.installedBrowsers;
   }
 
+  async getDetectedBrowsers(): Promise<DetectedBrowser[]> {
+    const installed = await this.getInstalledBrowsers();
+    const platform = process.platform;
+    let allBrowsers: Omit<Browser, 'path'>[] = [];
+
+    if (platform === 'darwin') {
+      allBrowsers = BROWSERS_MAC;
+    } else if (platform === 'win32') {
+      allBrowsers = BROWSERS_WIN;
+    } else {
+      allBrowsers = BROWSERS_LINUX;
+    }
+
+    // Map all known browsers to DetectedBrowser objects
+    const detected: DetectedBrowser[] = allBrowsers
+      .filter(b => b.id !== 'default') // Exclude abstract "Default Browser" from this list
+      .map(browser => {
+        const installedBrowser = installed.find(ib => ib.id === browser.id);
+        const metadata = BROWSER_METADATA[browser.id] || { downloadUrl: '', description: '' };
+
+        return {
+          ...browser,
+          path: installedBrowser?.path || '',
+          isInstalled: !!installedBrowser,
+          downloadUrl: metadata.downloadUrl,
+          description: metadata.description
+        };
+      });
+
+    // Sort: installed first, then alphabetically
+    return detected.sort((a, b) => {
+      if (a.isInstalled === b.isInstalled) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.isInstalled ? -1 : 1;
+    });
+  }
+
   private async detectMacBrowsers(): Promise<Browser[]> {
     const browsers: Browser[] = [
       { id: 'default', name: 'Default Browser', path: '', icon: '🌐' }
@@ -124,7 +189,7 @@ export class BrowserService {
 
     for (const browser of BROWSERS_MAC) {
       if (browser.id === 'default') continue;
-      
+
       const paths = BROWSER_PATHS_MAC[browser.id] || [];
       for (const path of paths) {
         if (existsSync(path)) {
@@ -138,15 +203,15 @@ export class BrowserService {
     try {
       const { readdirSync } = await import('fs');
       const apps = readdirSync('/Applications');
-      
+
       // Look for any app with "browser" in the name that we haven't detected
       const browserKeywords = ['browser', 'web', 'surf'];
       for (const app of apps) {
         if (!app.endsWith('.app')) continue;
-        
+
         const appLower = app.toLowerCase();
         const isKnown = browsers.some(b => b.path.includes(app));
-        
+
         if (!isKnown && browserKeywords.some(kw => appLower.includes(kw))) {
           const appName = app.replace('.app', '');
           browsers.push({
@@ -171,7 +236,7 @@ export class BrowserService {
 
     for (const browser of BROWSERS_WIN) {
       if (browser.id === 'default') continue;
-      
+
       const path = BROWSER_PATHS_WIN[browser.id];
       if (path && existsSync(path)) {
         browsers.push({ ...browser, path });
@@ -203,7 +268,7 @@ export class BrowserService {
 
     for (const browser of BROWSERS_LINUX) {
       if (browser.id === 'default') continue;
-      
+
       const commands = linuxCommands[browser.id] || [];
       for (const cmd of commands) {
         try {

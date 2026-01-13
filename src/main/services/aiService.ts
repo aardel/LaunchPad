@@ -5,7 +5,7 @@
  */
 
 export interface AIConfig {
-  apiKey?: string;
+  apiKey?: string | null;
   enabled: boolean;
 }
 
@@ -21,9 +21,11 @@ export class AIService {
     }
   }
 
-  setApiKey(apiKey: string): void {
-    this.apiKey = apiKey;
-    this.enabled = true;
+  setApiKey(apiKey: string | null | undefined): void {
+    this.apiKey = apiKey || null;
+    if (apiKey) {
+      this.enabled = true;
+    }
   }
 
   setEnabled(enabled: boolean): void {

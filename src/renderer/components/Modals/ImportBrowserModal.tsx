@@ -49,11 +49,11 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
 
   // Filter bookmarks based on search and folder
   const filteredBookmarks = useMemo(() => {
-    return bookmarks.filter((b, idx) => {
-      const matchesSearch = !searchFilter || 
+    return bookmarks.filter((b) => {
+      const matchesSearch = !searchFilter ||
         b.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
         b.url.toLowerCase().includes(searchFilter.toLowerCase());
-      const matchesFolder = folderFilter === 'all' || 
+      const matchesFolder = folderFilter === 'all' ||
         (b.folder && b.folder.startsWith(folderFilter));
       return matchesSearch && matchesFolder;
     });
@@ -63,10 +63,10 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
   const filteredIndices = useMemo(() => {
     return bookmarks.map((b, idx) => ({ bookmark: b, idx }))
       .filter(({ bookmark }) => {
-        const matchesSearch = !searchFilter || 
+        const matchesSearch = !searchFilter ||
           bookmark.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
           bookmark.url.toLowerCase().includes(searchFilter.toLowerCase());
-        const matchesFolder = folderFilter === 'all' || 
+        const matchesFolder = folderFilter === 'all' ||
           (bookmark.folder && bookmark.folder.startsWith(folderFilter));
         return matchesSearch && matchesFolder;
       })
@@ -121,7 +121,7 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
       if (res.success && res.data) {
         setBookmarks(res.data);
         // Select all by default
-        setSelectedBookmarks(new Set(res.data.map((_, idx) => idx)));
+        setSelectedBookmarks(new Set(res.data.map((_: unknown, idx: number) => idx)));
       }
     } catch (error) {
       console.error('Failed to load bookmarks:', error);
@@ -143,7 +143,7 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
   const toggleAllFiltered = () => {
     const newSelected = new Set(selectedBookmarks);
     const allSelected = filteredIndices.every(idx => selectedBookmarks.has(idx));
-    
+
     if (allSelected) {
       // Deselect all filtered
       filteredIndices.forEach(idx => newSelected.delete(idx));
@@ -164,12 +164,12 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
 
   const handleCreateGroup = async () => {
     if (!newGroupName.trim()) return;
-    
+
     await createGroup({
       name: newGroupName.trim(),
       icon: newGroupIcon,
     });
-    
+
     // Get the newly created group
     await loadData();
   };
@@ -218,7 +218,7 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
     try {
       // Get selected bookmarks
       const selectedItems = bookmarks.filter((_, idx) => selectedBookmarks.has(idx));
-      
+
       // Import each selected bookmark
       let imported = 0;
       for (const bookmark of selectedItems) {
@@ -269,7 +269,7 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
 
   if (!isOpen) return null;
 
-  const allFilteredSelected = filteredIndices.length > 0 && 
+  const allFilteredSelected = filteredIndices.length > 0 &&
     filteredIndices.every(idx => selectedBookmarks.has(idx));
   const someFilteredSelected = filteredIndices.some(idx => selectedBookmarks.has(idx));
 
@@ -325,8 +325,8 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
                       onClick={() => setSelectedBrowser(browser.id)}
                       className={`flex items-center gap-2 p-3 rounded-xl border transition-all text-left
                                ${selectedBrowser === browser.id
-                                 ? 'border-accent-primary bg-accent-primary/10'
-                                 : 'border-dark-700 bg-dark-800/50 hover:border-dark-600'}`}
+                          ? 'border-accent-primary bg-accent-primary/10'
+                          : 'border-dark-700 bg-dark-800/50 hover:border-dark-600'}`}
                     >
                       <span className="text-xl">{browser.icon}</span>
                       <div className="flex-1 min-w-0">
@@ -452,7 +452,7 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
               {selectedBrowser && bookmarks.length > 0 && (
                 <div>
                   <label className="input-label">3. Import into Group</label>
-                  
+
                   {!isCreatingGroup ? (
                     <div className="space-y-2">
                       <select
@@ -520,11 +520,10 @@ export function ImportBrowserModal({ isOpen, onClose }: Props) {
               {/* Result Message */}
               {result && (
                 <div
-                  className={`p-4 rounded-lg flex items-center gap-3 ${
-                    result.success
-                      ? 'bg-accent-success/10 text-accent-success'
-                      : 'bg-accent-danger/10 text-accent-danger'
-                  }`}
+                  className={`p-4 rounded-lg flex items-center gap-3 ${result.success
+                    ? 'bg-accent-success/10 text-accent-success'
+                    : 'bg-accent-danger/10 text-accent-danger'
+                    }`}
                 >
                   {result.success ? (
                     <Check className="w-5 h-5 flex-shrink-0" />

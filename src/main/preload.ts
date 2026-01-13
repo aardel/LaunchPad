@@ -90,6 +90,21 @@ const api = {
       ipcRenderer.invoke('system:selectApp'),
     openExtensionFolder: (browser: 'chrome' | 'safari'): Promise<IPCResponse<void>> =>
       ipcRenderer.invoke('system:openExtensionFolder', browser),
+    getDetectedTerminals: (): Promise<IPCResponse<import('../shared/types').DetectedTerminal[]>> =>
+      ipcRenderer.invoke('system:getDetectedTerminals'),
+    getDetectedBrowsers: (): Promise<IPCResponse<import('../shared/types').DetectedBrowser[]>> =>
+      ipcRenderer.invoke('system:getDetectedBrowsers'),
+    getDetectedFtpClients: (): Promise<IPCResponse<import('../shared/types').DetectedFtpClient[]>> =>
+      ipcRenderer.invoke('system:getDetectedFtpClients'),
+  },
+
+  network: {
+    scan: (durationMs?: number): Promise<IPCResponse<import('../shared/types').NetworkShare[]>> =>
+      ipcRenderer.invoke('network:scan', durationMs),
+    stopScan: (): Promise<IPCResponse<void>> =>
+      ipcRenderer.invoke('network:stopScan'),
+    scanPorts: (host: string, type?: 'basic' | 'deep'): Promise<IPCResponse<number[]>> =>
+      ipcRenderer.invoke('network:scanPorts', host, type),
   },
 
   // Search
@@ -106,9 +121,9 @@ const api = {
       ipcRenderer.invoke('data:import'),
     analyzeImport: (): Promise<IPCResponse<{ groups: any[]; items: any[]; conflicts: any[] }>> =>
       ipcRenderer.invoke('data:analyzeImport'),
-    importWithResolutions: (importData: any, safeGroups: any[], safeItems: any[], resolutions: Record<string, 'merge' | 'replace' | 'skip'>): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
-      ipcRenderer.invoke('data:importWithResolutions', importData, safeGroups, safeItems, resolutions),
-    importSyncFile: (): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
+    importWithResolutions: (importData: any, safeGroups: any[], safeItems: any[], resolutions: Record<string, 'merge' | 'replace' | 'skip'>, password?: string): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
+      ipcRenderer.invoke('data:importWithResolutions', importData, safeGroups, safeItems, resolutions, password),
+    importSyncFile: (): Promise<IPCResponse<{ groups: any[]; items: any[]; conflicts: any[] }>> =>
       ipcRenderer.invoke('data:importSyncFile'),
     importBrowserBookmarks: (filePath: string, targetGroupId: string): Promise<IPCResponse<{ count: number }>> =>
       ipcRenderer.invoke('data:importBrowserBookmarks', filePath, targetGroupId),
@@ -205,6 +220,10 @@ const api = {
   backup: {
     getLatest: (): Promise<IPCResponse<{ timestamp: string } | null>> =>
       ipcRenderer.invoke('backup:getLatest'),
+    getConfig: (): Promise<IPCResponse<{ path: string }>> =>
+      ipcRenderer.invoke('backup:getConfig'),
+    create: (): Promise<IPCResponse<{ path: string; timestamp: string }>> =>
+      ipcRenderer.invoke('backup:create'),
     undo: (): Promise<IPCResponse<{ groupsCount: number; itemsCount: number }>> =>
       ipcRenderer.invoke('backup:undo'),
   },

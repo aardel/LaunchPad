@@ -116,6 +116,12 @@ export interface Browser {
   icon: string;
 }
 
+export interface DetectedBrowser extends Browser {
+  isInstalled: boolean;
+  downloadUrl: string;
+  description?: string;
+}
+
 // Settings
 export interface AppSettings {
   theme: 'dark' | 'light' | 'system';
@@ -125,6 +131,7 @@ export interface AppSettings {
   tailscaleEnabled: boolean;
   tailscalePath?: string;
   defaultTerminal: string;
+  defaultFtpClient?: string;
   syncEnabled: boolean;
   syncUrl?: string;
   syncUsername?: string;
@@ -138,7 +145,7 @@ export interface AppSettings {
   aiEnabled: boolean;
   smartRoutingEnabled: boolean;
   advancedMode: boolean; // Toggle for advanced features (Tailscale, VPN, etc)
-  groqApiKey?: string; // Encrypted
+  groqApiKey?: string | null; // Encrypted
   globalSearchHotkey: string;
   // Keyboard shortcuts
   keyboardShortcuts: {
@@ -177,6 +184,37 @@ export interface TailscaleStatus {
   tailnetName?: string;
   ipAddress?: string;
   hostname?: string;
+}
+
+// Terminal Support
+export type TerminalApp = 'Terminal' | 'iTerm' | 'Warp' | 'Alacritty' | 'Kitty' | 'Hyper';
+
+export interface DetectedTerminal {
+  id: TerminalApp;
+  name: string;
+  isInstalled: boolean;
+  path?: string; // App bundle path (e.g. /Applications/iTerm.app)
+  downloadUrl: string;
+  description: string; // Brief description for UI
+}
+
+export interface DetectedFtpClient {
+  id: string;
+  name: string;
+  isInstalled: boolean;
+  path?: string;
+  downloadUrl: string;
+  description: string;
+}
+
+// Network Discovery
+export interface NetworkShare {
+  name: string;
+  type: 'smb' | 'afp' | 'nfs' | 'other';
+  host: string; // e.g., "MyNas.local"
+  address?: string; // e.g., "192.168.1.50" (if resolvable)
+  openPorts?: number[];
+  scanType?: 'basic' | 'deep';
 }
 
 // IPC Types

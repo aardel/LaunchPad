@@ -1,11 +1,14 @@
 import { useMemo, useState, useEffect } from 'react';
 import Fuse from 'fuse.js';
-import { Plus, Play, LayoutGrid, Grid3x3, List, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, Play, LayoutGrid, Grid3x3, List, Sparkles, Loader2, Network } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { SortableGroupSection } from './SortableGroupSection';
 import { BatchOperationsBar } from './BatchOperationsBar';
 import { EnhancedSearchBar } from './EnhancedSearchBar';
 import type { AnyItem, BookmarkItem, SSHItem, AppItem, PasswordItem } from '@shared/types';
+
+// Import NetworkExplorerModal
+import { NetworkExplorerModal } from '../Modals/NetworkExplorerModal';
 
 export function Dashboard() {
   const {
@@ -20,6 +23,9 @@ export function Dashboard() {
   } = useStore();
 
   const cardViewMode = settings?.cardViewMode || 'normal';
+  const [isNetworkExplorerOpen, setIsNetworkExplorerOpen] = useState(false);
+
+  // ... rest of state ...
 
   // Semantic search state
   const [semanticResults, setSemanticResults] = useState<Set<string>>(new Set());
@@ -314,6 +320,13 @@ export function Dashboard() {
                 <Plus className="w-4 h-4" />
                 Add Item
               </button>
+              <button
+                onClick={() => setIsNetworkExplorerOpen(true)}
+                className="btn-secondary"
+                title="Network Explorer"
+              >
+                <Network className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -348,6 +361,11 @@ export function Dashboard() {
 
       {/* Batch Operations Bar */}
       <BatchOperationsBar />
+
+      <NetworkExplorerModal
+        isOpen={isNetworkExplorerOpen}
+        onClose={() => setIsNetworkExplorerOpen(false)}
+      />
     </main>
   );
 }

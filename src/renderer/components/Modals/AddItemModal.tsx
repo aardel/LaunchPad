@@ -23,8 +23,22 @@ const protocols: Protocol[] = [
   'about', 'custom'
 ];
 
-export function AddItemModal() {
+// Interface for props
+interface AddItemModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  initialData?: Partial<CreateItemInput> & {
+    protocol?: Protocol;
+    path?: string;
+  };
+}
+
+export function AddItemModal({ isOpen, onClose, initialData }: AddItemModalProps = {}) {
   const { isAddModalOpen, closeAddModal, createItem, groups, selectedGroupId, items, settings } = useStore();
+
+  // Determine effective state (props override store)
+  const showModal = isOpen !== undefined ? isOpen : isAddModalOpen;
+  const handleClose = onClose || closeAddModal;
 
   const [step, setStep] = useState<'type' | 'form'>('type');
   const [selectedType, setSelectedType] = useState<ItemType>('bookmark');
@@ -73,33 +87,70 @@ export function AddItemModal() {
 
   // Reset form when modal opens
   useEffect(() => {
-    if (isAddModalOpen) {
-      setStep('type');
-      setSelectedType('bookmark');
-      setName('');
-      setDescription('');
-      setTags([]);
-      setTagsInput('');
-      setGroupId(selectedGroupId || groups[0]?.id || '');
-      setIcon('');
-      setColor('#6366f1');
-      setProtocol('https');
-      setPort('');
-      setPath('');
-      setLocalAddress('');
-      setTailscaleAddress('');
-      setVpnAddress('');
-      setUsername('root');
-      setSshPort('22');
-      setCredUsername('');
-      setCredPassword('');
-      setShowPassword(false);
-      setAppPath('');
-      setService('');
-      setPasswordUrl('');
-      setPasswordNotes('');
+    if (showModal) {
+      if (initialData) {
+        // Initialize from props
+        setStep('form');
+        setSelectedType(initialData.type || 'bookmark');
+        setName(initialData.name || '');
+        setDescription(initialData.description || '');
+        setTags(initialData.tags || []);
+        setGroupId(initialData.groupId || selectedGroupId || groups[0]?.id || '');
+        setIcon(initialData.icon || '');
+        setColor(initialData.color || '#6366f1');
+
+        // Protocol & Path
+        setProtocol(initialData.protocol || 'https');
+        setPath(initialData.path || '');
+
+        // Addresses
+        if (initialData.networkAddresses) {
+          setLocalAddress(initialData.networkAddresses.local || '');
+          setTailscaleAddress(initialData.networkAddresses.tailscale || '');
+          setVpnAddress(initialData.networkAddresses.vpn || '');
+        } else if (initialData.path && initialData.path.includes('.local')) {
+          // Heuristic for network shares passed as path/hostname in initialData
+          // If we passed the hostname in 'path' prop for convenience
+          setLocalAddress(initialData.path);
+          setPath(''); // Clear path since we used it for address
+        }
+
+        // Port
+        if (initialData.port) setPort(initialData.port.toString());
+
+        // Other fields
+        setUsername(initialData.username || 'root');
+        setAppPath(initialData.appPath || '');
+
+      } else {
+        // Default Reset
+        setStep('type');
+        setSelectedType('bookmark');
+        setName('');
+        setDescription('');
+        setTags([]);
+        setTagsInput('');
+        setGroupId(selectedGroupId || groups[0]?.id || '');
+        setIcon('');
+        setColor('#6366f1');
+        setProtocol('https');
+        setPort('');
+        setPath('');
+        setLocalAddress('');
+        setTailscaleAddress('');
+        setVpnAddress('');
+        setUsername('root');
+        setSshPort('22');
+        setCredUsername('');
+        setCredPassword('');
+        setShowPassword(false);
+        setAppPath('');
+        setService('');
+        setPasswordUrl('');
+        setPasswordNotes('');
+      }
     }
-  }, [isAddModalOpen, selectedGroupId, groups]);
+  }, [showModal, selectedGroupId, groups, initialData]);
 
   const handleSelectType = (type: ItemType) => {
     setSelectedType(type);
@@ -220,7 +271,7 @@ export function AddItemModal() {
       }
 
       await createItem(input);
-      closeAddModal();
+      handleClose();
     } catch (error) {
       console.error('Failed to create item:', error);
     } finally {
@@ -239,14 +290,14 @@ export function AddItemModal() {
     </button>
   );
 
-  if (!isAddModalOpen) return null;
+  if (!showModal) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-dark-950/80 backdrop-blur-sm"
-        onClick={closeAddModal}
+        onClick={handleClose}
       />
 
       {/* Modal */}
@@ -257,7 +308,7 @@ export function AddItemModal() {
             {step === 'type' ? 'Add New Item' : `New ${itemTypes.find(t => t.id === selectedType)?.label}`}
           </h2>
           <button
-            onClick={closeAddModal}
+            onClick={handleClose}
             className="p-2 rounded-lg text-dark-400 hover:text-dark-200 hover:bg-dark-800 transition-colors"
           >
             <X className="w-5 h-5" />

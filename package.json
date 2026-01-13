@@ -1,6 +1,6 @@
 {
   "name": "launchit",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "A powerful launcher for bookmarks, SSH connections, apps, and passwords with network profile support. Features AI-powered categorization, semantic search, browser extensions, automatic backups, sync, encryption, and more.",
   "main": "dist/main/index.js",
   "scripts": {
@@ -29,6 +29,7 @@
     "electron-builder": "^24.9.1",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.3.6",
+    "ts-node": "^10.9.2",
     "typescript": "^5.3.2",
     "vite": "^5.0.4"
   },

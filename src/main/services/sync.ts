@@ -10,6 +10,10 @@ interface SyncData {
   lastSync: string;
   groups: Group[];
   items: AnyItem[];
+  encryption?: {
+    salt: string;
+    verification: string;
+  };
 }
 
 export class SyncService {
@@ -78,7 +82,8 @@ export class SyncService {
     username: string,
     encryptedPassword: string,
     groups: Group[],
-    items: AnyItem[]
+    items: AnyItem[],
+    encryption?: { salt: string; verification: string }
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // Decrypt password
@@ -97,6 +102,7 @@ export class SyncService {
         lastSync: new Date().toISOString(),
         groups,
         items,
+        encryption,
       };
 
       const jsonData = JSON.stringify(syncData, null, 2);
